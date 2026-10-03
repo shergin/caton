@@ -1,7 +1,6 @@
 #!/bin/sh
-# Builds Caton.app (release) into build/. Set CATON_GITHUB_CLIENT_ID to the
-# client id of a GitHub OAuth App with device flow enabled to turn on
-# "Sign in with GitHub".
+# Builds Caton.app (release) into build/. CATON_GITHUB_CLIENT_ID overrides the
+# OAuth App "Sign in with GitHub" uses (Caton's own by default).
 set -e
 cd "$(dirname "$0")/.."
 swift build -c release
@@ -22,7 +21,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSUIElement</key><true/>
-  <key>CatonGitHubClientID</key><string>${CATON_GITHUB_CLIENT_ID:-}</string>
+  <key>CatonGitHubClientID</key><string>${CATON_GITHUB_CLIENT_ID:-Ov23liz9s5AlvZVZWZ2k}</string>
 </dict>
 </plist>
 PLIST

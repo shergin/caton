@@ -591,7 +591,7 @@ Built on Baton 0.6.0 in `Sources/`; `swift test` runs 70 tests (CatonCore and th
 | Area | Status |
 |---|---|
 | Menu bar count (or dot), configurable global shortcut with fallback, non-activating panel, outside-click and Esc dismissal | Built |
-| Sign-in: GitHub CLI token, classic PAT, device flow (needs an OAuth App client id) | Built; device flow untested until a client id exists |
+| Sign-in: device flow through Caton's OAuth App (`Ov23liz9s5AlvZVZWZ2k`), GitHub CLI token, classic PAT | Built; the OAuth App accepts device-code requests, a full sign-in not yet run |
 | REST feed: conditional polling at 50 per page, read-not-done window, rate governor shared with GraphQL | Built |
 | Subject state through Baton, image hydration on relaunch | Built; verified on a 9-thread account |
 | Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds (Apps, machine users named like bots, a user list) | Built; heuristic not yet compared with github.com/pulls (S3) |

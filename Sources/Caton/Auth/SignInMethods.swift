@@ -31,8 +31,8 @@ enum GitHubCLI {
 }
 
 /// GitHub's OAuth device flow for an OAuth App: no client secret, no server.
-/// The client id comes from the bundle (`CatonGitHubClientID`) or the
-/// environment (`CATON_GITHUB_CLIENT_ID`); without one the flow is off.
+/// The client id is Caton's own OAuth App's; the bundle (`CatonGitHubClientID`)
+/// or the environment (`CATON_GITHUB_CLIENT_ID`) can name another.
 struct DeviceFlow {
     struct Code: Sendable {
         let deviceCode: String
@@ -44,9 +44,14 @@ struct DeviceFlow {
 
     static let scopes = "notifications repo"
 
+    /// Caton's OAuth App. A client id is public by design; device flow
+    /// needs no secret.
+    static let defaultClientID = "Ov23liz9s5AlvZVZWZ2k"
+
     static var clientID: String? {
         (Bundle.main.object(forInfoDictionaryKey: "CatonGitHubClientID") as? String)?.nonEmpty
             ?? ProcessInfo.processInfo.environment["CATON_GITHUB_CLIENT_ID"]?.nonEmpty
+            ?? defaultClientID
     }
 
     let clientID: String

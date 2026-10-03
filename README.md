@@ -36,11 +36,12 @@ the sign-in screen. Debug builds also take `CATON_OPEN_PANEL=1`,
 `CATON_SECTION=0…3`, `CATON_SNAPSHOT=/path.png` (renders the panel to a file)
 and `CATON_DUMP=1` (prints the classified inbox to stderr).
 
-`./scripts/bundle.sh` builds `build/Caton.app`. "Sign in with GitHub" needs
-the client id of a GitHub OAuth App with device flow enabled, passed as
-`CATON_GITHUB_CLIENT_ID` when bundling; until then, sign in with the GitHub
-CLI's login or a classic token with the `notifications` and `repo` scopes.
-GitHub's notifications API does not accept fine-grained tokens.
+`./scripts/bundle.sh` builds `build/Caton.app`. "Sign in with GitHub" uses
+the device flow of Caton's OAuth App (client id `Ov23liz9s5AlvZVZWZ2k`; no
+secret is involved); `CATON_GITHUB_CLIENT_ID` points it at another OAuth App
+with device flow enabled. The GitHub CLI's login and a classic token with the
+`notifications` and `repo` scopes also work. GitHub's notifications API does
+not accept fine-grained tokens or GitHub App tokens.
 
 Requires macOS 26 and Swift 6.2, as Baton does.
 
