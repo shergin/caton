@@ -586,24 +586,27 @@ This is a demo, so these are **validation signals**, measured locally or by hand
 
 ## 17. Build status (2026-10-03)
 
-Built on Baton 0.6.0 in `Sources/`; `swift test` runs 42 tests over CatonCore.
+Built on Baton 0.6.0 in `Sources/`; `swift test` runs 70 tests (CatonCore and the app model).
 
 | Area | Status |
 |---|---|
-| Menu bar count, global hotkey (with fallback), non-activating panel, outside-click and Esc dismissal | Built |
+| Menu bar count (or dot), configurable global shortcut with fallback, non-activating panel, outside-click and Esc dismissal | Built |
 | Sign-in: GitHub CLI token, classic PAT, device flow (needs an OAuth App client id) | Built; device flow untested until a client id exists |
 | REST feed: conditional polling at 50 per page, read-not-done window, rate governor shared with GraphQL | Built |
 | Subject state through Baton, image hydration on relaunch | Built; verified on a 9-thread account |
-| Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds | Built; heuristic not yet compared with github.com/pulls (S3) |
-| Rules R1–R4, Cleared log with restore, rule exemptions | Built; GitHub sync opt-in |
-| Verbs: open, done, unsubscribe, ignore, mark read, snooze, later, mute repo, bulk, undo, get me to zero | Built |
+| Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds (Apps, machine users named like bots, a user list) | Built; heuristic not yet compared with github.com/pulls (S3) |
+| Rules R1–R4, Cleared log with restore, rule exemptions; GitHub sync opt-in from the welcome summary or Settings | Built |
+| Verbs: open, done, unsubscribe, ignore, mark read, snooze, later, mute repo, bulk, undo, get me to zero, peek | Built |
 | Paced persisted queue, grace window, drain on quit | Built |
-| Search (text), unread only, grouping with stable repository order | Built; structured qualifiers not yet |
-| Cmd+K command menu, `?` keymap, footer hints | Built |
-| Orphan review-request search (8.3) | Not yet |
-| Banners and quiet hours (9.6) | Not yet; needs the bundled app for notification permission |
-| Settings window, onboarding summary, peek | Not yet; settings live in the footer menu |
-| Spikes S1–S5 | Not yet run |
+| Search with qualifiers, unread only, grouping with stable repository order | Built |
+| Cmd+K command menu, `?` keymap, footer hints, hover actions | Built |
+| Orphan review-request search (8.3) | Built; the account used had no review requests, so only its cost (1 point) is verified |
+| Banners and quiet hours (9.6) | Built; needs the bundled app; not yet seen on screen |
+| Settings window (General, Rules, Alerts, Account), welcome summary (OB-02) | Built |
+| Practice inbox, saved searches, digest, second hotkey, detachable panel, Sparkle, multiple accounts | Not yet (P2) |
+| Spikes S1, S2 | Not run: they mutate notifications and need a sandbox account |
+| Spike S3 | Open: needs an account with direct and team review requests |
+| Spike S4 | Answered: `user-review-requested:@me` costs 1 point |
+| Spike S5 | Answered by the build: a thread's reason stayed `mention` years after the mention, while the latest activity was a bot closing the issue. Facts now include the latest commenter, and an old mention on a subject a bot closed is no longer Needs me |
 
 Improvements Baton needs, found while building, are in `../baton/notes/reviews/2026-10-03-caton-dogfooding.md`.
-

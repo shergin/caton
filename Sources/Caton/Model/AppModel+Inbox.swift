@@ -203,6 +203,20 @@ extension AppModel {
 
     var mutedRepositories: [String] { state.settings.mutedRepositories.sorted() }
 
+    var botLogins: [String] { state.settings.botLogins.sorted() }
+
+    func addBot(_ login: String) {
+        let login = login.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !login.isEmpty else { return }
+        state.settings.botLogins.insert(login)
+        recompute()
+    }
+
+    func removeBot(_ login: String) {
+        state.settings.botLogins.remove(login)
+        recompute()
+    }
+
     func unmute(_ repository: String) {
         state.settings.mutedRepositories.remove(repository)
         recompute()

@@ -90,6 +90,20 @@ struct SettingsView: View {
             } footer: {
                 Text("Off: rules hide threads on this Mac only. On: they are also marked done on github.com, after the undo window.")
             }
+            Section {
+                ForEach(model.botLogins, id: \.self) { login in
+                    HStack {
+                        Text(login)
+                        Spacer()
+                        Button("Remove") { model.removeBot(login) }
+                    }
+                }
+                BotField(model: model)
+            } header: {
+                Text("Bot accounts")
+            } footer: {
+                Text("GitHub Apps and logins ending in -bot, _bot, robot or [bot] count as bots already. Add machine users named otherwise.")
+            }
             if !model.mutedRepositories.isEmpty {
                 Section("Muted repositories") {
                     ForEach(model.mutedRepositories, id: \.self) { repository in
@@ -203,5 +217,22 @@ struct HotKeyRecorder: View {
         isRecording = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+    }
+}
+
+struct BotField: View {
+    let model: AppModel
+    @State private var login = ""
+
+    var body: some View {
+        HStack {
+            TextField("Login", text: $login).onSubmit(add)
+            Button("Add", action: add).disabled(login.isEmpty)
+        }
+    }
+
+    private func add() {
+        model.addBot(login)
+        login = ""
     }
 }

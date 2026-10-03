@@ -44,12 +44,29 @@ GitHub's notifications API does not accept fine-grained tokens.
 
 Requires macOS 26 and Swift 6.2, as Baton does.
 
+`swift test` runs two suites: `CatonCoreTests` (classifier, projection, queue,
+REST client, alerts, search) and `CatonTests` (the app model's verbs, against
+a throwaway state file and user defaults).
+
 ## Keys
 
 `j`/`k` move, `⏎`/`o` open, `e`/`d` done, `h` snooze, `u` unsubscribe, `b`
-later, `m` mark read, `x` select, `z` undo, `y` copy link, `/` search, `⇥`
-next split, `1`–`4` splits, `⌘K` commands, `?` all keys. The global shortcut
-is `⌘'` (or `⌥⌘'` when another app holds it).
+later, `m` mark read, `p` peek, `x` select, `z` undo, `y` copy link, `/`
+search, `⇥` next split, `1`–`4` splits, `⌘K` commands, `⌘,` settings, `?`
+all keys. The global shortcut is `⌘'` by default (`⌥⌘'` when another app
+holds it) and can be changed in Settings.
+
+Search takes words and GitHub-style qualifiers, each negatable with `-`:
+`repo:`, `org:`, `author:`, `reason:` (`review`, `mention`, `team`, …), `is:`
+(`pr`, `issue`, `draft`, `unread`, `open`, `closed`, `merged`, `bot`) and
+`ci:` (`failing`, `passing`, `pending`).
+
+## Alerts
+
+The bundled app shows a banner when something new needs you: Needs me only,
+at most three per poll and a summary for the rest, never while the panel is
+open, and silent outside working hours (9:00–19:00 on weekdays by default).
+The first poll after launch announces nothing; what is already there is seen.
 
 ## Rules
 

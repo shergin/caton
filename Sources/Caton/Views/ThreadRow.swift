@@ -16,6 +16,7 @@ struct ThreadRow: View {
     let onToggleCheck: () -> Void
     let onDone: () -> Void
     let onSnooze: () -> Void
+    let onUnsubscribe: () -> Void
 
     @State private var isHovered = false
 
@@ -61,6 +62,7 @@ struct ThreadRow: View {
                 HStack(spacing: 2) {
                     RowButton(symbol: "checkmark", help: "Done (e)", action: onDone)
                     RowButton(symbol: "moon.zzz", help: "Snooze (h)", action: onSnooze)
+                    RowButton(symbol: "bell.slash", help: "Unsubscribe (u)", action: onUnsubscribe)
                 }
             } else {
                 VStack(alignment: .trailing, spacing: 3) {

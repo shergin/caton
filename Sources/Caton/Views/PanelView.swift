@@ -153,7 +153,8 @@ struct InboxView: View {
                                     onSnooze: {
                                         model.select(item.id)
                                         model.overlay = .snooze
-                                    }
+                                    },
+                                    onUnsubscribe: { model.unsubscribe(item.id) }
                                 )
                                 .id(item.id)
                             }
