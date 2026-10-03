@@ -1,0 +1,87 @@
+import SwiftUI
+
+struct SignInView: View {
+    @Bindable var model: AppModel
+    @State private var token = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "pawprint.fill").font(.system(size: 20))
+                Text("Caton").font(.system(size: 18, weight: .semibold))
+            }
+            Text("The GitHub inbox that shows only what needs you. Sign in to read your notifications; your token stays on this Mac.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if model.account == .connecting {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Signing in…").font(.system(size: 12))
+                }
+            } else if case .waiting(let code, let url) = model.deviceSignIn {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Enter this code on GitHub (copied):").font(.system(size: 12))
+                    Text(code).font(.system(size: 24, weight: .semibold, design: .monospaced)).textSelection(.enabled)
+                    HStack {
+                        Link("Open \(url.host() ?? "github.com")", destination: url).font(.system(size: 12))
+                        Spacer()
+                        Button("Cancel") { model.cancelSignIn() }
+                    }
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Waiting for approval…").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                methods
+            }
+
+            if let error = model.signInError {
+                Text(error).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Text("Caton reads notifications with a classic-scope token (notifications, repo). GitHub does not let fine-grained tokens read notifications.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(20)
+    }
+
+    @ViewBuilder private var methods: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                model.signInWithDeviceFlow()
+            } label: {
+                Label("Sign in with GitHub", systemImage: "person.badge.key").frame(maxWidth: .infinity)
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+            .disabled(DeviceFlow.clientID == nil)
+            .help(DeviceFlow.clientID == nil ? "Needs an OAuth App client id (CatonGitHubClientID)" : "Opens github.com with a one-time code")
+
+            if GitHubCLI.executable != nil {
+                Button {
+                    model.signInWithGitHubCLI()
+                } label: {
+                    Label("Use my GitHub CLI login", systemImage: "terminal").frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+            }
+
+            Divider().padding(.vertical, 2)
+            Text("Or paste a classic token").font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack {
+                SecureField("ghp_…", text: $token)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.signIn(token: token) }
+                Button("Sign in") { model.signIn(token: token) }
+                    .disabled(token.isEmpty)
+            }
+            Link("Create a token with the right scopes →", destination: URL(string: "https://github.com/settings/tokens/new?scopes=notifications,repo&description=Caton")!)
+                .font(.system(size: 11))
+        }
+    }
+}
