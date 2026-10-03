@@ -4,3 +4,5 @@
 DerivedData/
 /build/
 .DS_Store
+# Research notes stay on this machine.
+research/

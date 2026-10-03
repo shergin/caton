@@ -6,7 +6,7 @@
 | **Doc type** | PRD, v0.2 (supersedes the Octodot-derived draft) |
 | **Date** | 2026-10-03 |
 | **Status** | Draft. Demo app; scope is opinionated on purpose. Build started 2026-10-03 on Baton; see section 17. |
-| **Inputs** | [Octodot teardown](research/octodot-teardown-prd.md) · [Landscape report](research/landscape-report.md) · [Research notes](research/notes/) |
+| **Inputs** | An Octodot teardown, a landscape report and research notes, kept locally in `research/` and not published |
 
 ---
 

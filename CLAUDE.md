@@ -1,7 +1,7 @@
 # Working in Caton
 
 Caton is a demo app built on Baton (`../baton`). Read `PRD.md` for what it is
-for; the research is in `research/`.
+for. The research behind it is kept locally in `research/`, outside git.
 
 ## Build and test
 

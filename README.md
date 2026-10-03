@@ -10,8 +10,7 @@ issue, clears what no longer needs anyone, and files the rest into four
 splits: **Needs me · Team · Following · Feed**. The number in the menu bar is
 the number of things waiting on you.
 
-The product thinking is in [PRD.md](PRD.md); the research behind it is in
-[research/](research/).
+The product thinking is in [PRD.md](PRD.md).
 
 ## How it is built
 
