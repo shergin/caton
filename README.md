@@ -20,7 +20,7 @@ The product thinking is in [PRD.md](PRD.md); the research behind it is in
   the action queue with its undo window, and the inbox projection. Pure and
   tested.
 - **Caton** (the app): an AppKit status item and non-activating panel hosting
-  SwiftUI, with subject state through [Baton](../baton). Each pull request
+  SwiftUI, with subject state through [Baton](https://github.com/shergin/baton). Each pull request
   and issue row reads its state through a fragment beside the view; the
   first fetch of a subject goes through `repository(owner:name:)`, later
   refreshes through `nodes(ids:)` in batches into the same records, and a
@@ -28,6 +28,16 @@ The product thinking is in [PRD.md](PRD.md); the research behind it is in
   network answers.
 
 ## Running
+
+Caton builds against a checkout of [Baton](https://github.com/shergin/baton)
+beside it (`Package.swift` names `../baton`):
+
+```sh
+git clone https://github.com/shergin/baton.git
+git clone https://github.com/shergin/caton.git
+baton/scripts/build-compiler.sh   # once: Baton's GraphQL compiler, needs Rust
+cd caton
+```
 
 ```sh
 swift test
