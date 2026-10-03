@@ -5,7 +5,7 @@
 | **Product** | Caton, a GitHub "needs-me" inbox for the macOS menu bar that clears itself |
 | **Doc type** | PRD, v0.2 (supersedes the Octodot-derived draft) |
 | **Date** | 2026-10-03 |
-| **Status** | Draft. Demo app; scope is opinionated on purpose. |
+| **Status** | Draft. Demo app; scope is opinionated on purpose. Build started 2026-10-03 on Baton; see section 17. |
 | **Inputs** | [Octodot teardown](research/octodot-teardown-prd.md) · [Landscape report](research/landscape-report.md) · [Research notes](research/notes/) |
 
 ---
@@ -186,6 +186,7 @@ Users report review requests that are visible in search but missing from notific
 | **R4 Muted repos** | Repo is on the local mute list | Done on arrival |
 
 - Every rule action is written to the **Cleared** log with the rule name, the thread, and the time. It can be undone during the grace window. After that, the log keeps a link to GitHub for 7 days.
+- **Rule clears stay on this Mac until the user opts in** ("Mark rule-cleared threads done on GitHub"). A first sync can match hundreds of threads, and marking them done on GitHub is not undoable after dispatch, so the default is local; the onboarding summary (OB-02) is where the user turns it on.
 - Rules never touch Needs me.
 - Muting bot *comments* on human PRs needs the latest comment's author (an extra fetch per thread). It's a should-have pending a cost measurement.
 
@@ -381,7 +382,7 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 | **Security** | Keychain only; HTTPS to `api.github.com` / `github.com` only. Reject untrusted pagination or subject URLs. Hardened runtime. |
 | **Privacy** | No server, no telemetry. Optional local-only stats ("this week: 312 cleared by rules, 41 by you"). |
 | **Accessibility** | Full VoiceOver coverage; keyboard-only is the primary path; respects Reduce Motion and the system appearance. |
-| **Platform** | macOS 14+, Apple silicon and Intel. |
+| **Platform** | macOS 26+ (Baton's floor), Apple silicon and Intel. |
 
 **API budget (from documented limits and first-hand tests, 2026-10-03):**
 
@@ -412,10 +413,11 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 +------------------------------------------------------------------+
 | Domain (pure)    Classifier · RuleEngine · ResurfacingPolicy      |  <- the product
 +------------------------------------------------------------------+
-| Stores           SQLite: threads, subjects, activity keys,        |
+| Stores           Baton image (SQLite): subject records;          |
+|                  JSON document: threads, activity keys,           |
 |                  snoozes, Later, mutes, Cleared log, action queue |
 +------------------------------------------------------------------+
-| Sync             FeedSyncer (REST poll) · Enricher (GraphQL) ·    |
+| Sync             FeedSyncer (REST poll) · SubjectStore (Baton) ·  |
 |                  ReviewRequestSearcher · ActionDispatcher (paced) |
 +------------------------------------------------------------------+
 | GitHubClient     actor; REST + GraphQL; conditional requests;     |
@@ -431,13 +433,13 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 | Hotkey | KeyboardShortcuts (Carbon) | Sandbox-safe; the only entry point Caton can count on |
 | Auth | OAuth App device flow, `gh` import, PAT; Keychain; no refresh logic | Only classic-scope tokens read notifications; OAuth App tokens work and don't expire |
 | Sync | Conditional poll of page 1 → serial pages at 50 → `since` deltas + periodic full reconcile | 304s are free; page cap is 50; `since` misses work done elsewhere |
-| Store | SQLite (e.g., GRDB), per account | Instant cold start; local-only states; 3-month server retention; testable migrations |
+| Store | Subject records in Baton's store and its SQLite image, per account; threads, local state and the queue in one JSON document | Instant cold start (the image hydrates subjects before the network); local-only states; 3-month server retention |
 | Domain | `classify(thread, subject, viewer, settings) -> (split, ruleActions, resurfaceNote)` as a pure, table-tested function | This layer is the product; the shell is a commodity |
 | Actions | Optimistic projection over a persisted queue; undo grace window; paced serial dispatch; local done ledger keyed on thread ID + `updated_at` | No API returns a done thread to the inbox; secondary limits; done threads can reappear in `all=true` |
-| Enrichment | GraphQL 50-alias batches for changed threads; periodic re-check of open subjects | ~1 point per 50 threads; partial results survive missing subjects |
+| Enrichment | Through Baton: one handle per subject, first fetched by `repository(owner:name:) { pullRequest(number:) }`, then refreshed by `nodes(ids:)` in batches of 50 into the same records; rows read fragments, the classifier reads a facts fragment | Operations are fixed at build time, so aliases cannot vary per inbox; a node id is learned once per subject |
 | Alerts | `UNUserNotificationCenter`, Needs me only, dedupe + cap + quiet hours | Less interruption, not more |
 | Concurrency | `actor` client; UUID request IDs checked after every `await`; cancellation through pagination | Lessons from Octodot's race-fix history |
-| Testing | Swift Testing; stubbed `NetworkSession`; fixture-driven classifier tables; deterministic clocks and sleeps | Most risk is in sync and state, not UI |
+| Testing | Swift Testing; stubbed `HTTPClient`; fixture-driven classifier tables; deterministic clocks; `CATON_DRY_RUN=1` against a real account | Most risk is in sync and state, not UI |
 
 **Core data model (sketch)**
 
@@ -579,3 +581,29 @@ This is a demo, so these are **validation signals**, measured locally or by hand
 | **Later** | Local saved list (GitHub's Saved has no API). |
 | **Cleared log** | Local record of rule and bulk actions, with undo during the grace window. |
 | **Grace window** | Delay before a mutation is sent, during which undo is exact. |
+
+---
+
+## 17. Build status (2026-10-03)
+
+Built on Baton 0.6.0 in `Sources/`; `swift test` runs 42 tests over CatonCore.
+
+| Area | Status |
+|---|---|
+| Menu bar count, global hotkey (with fallback), non-activating panel, outside-click and Esc dismissal | Built |
+| Sign-in: GitHub CLI token, classic PAT, device flow (needs an OAuth App client id) | Built; device flow untested until a client id exists |
+| REST feed: conditional polling at 50 per page, read-not-done window, rate governor shared with GraphQL | Built |
+| Subject state through Baton, image hydration on relaunch | Built; verified on a 9-thread account |
+| Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds | Built; heuristic not yet compared with github.com/pulls (S3) |
+| Rules R1–R4, Cleared log with restore, rule exemptions | Built; GitHub sync opt-in |
+| Verbs: open, done, unsubscribe, ignore, mark read, snooze, later, mute repo, bulk, undo, get me to zero | Built |
+| Paced persisted queue, grace window, drain on quit | Built |
+| Search (text), unread only, grouping with stable repository order | Built; structured qualifiers not yet |
+| Cmd+K command menu, `?` keymap, footer hints | Built |
+| Orphan review-request search (8.3) | Not yet |
+| Banners and quiet hours (9.6) | Not yet; needs the bundled app for notification permission |
+| Settings window, onboarding summary, peek | Not yet; settings live in the footer menu |
+| Spikes S1–S5 | Not yet run |
+
+Improvements Baton needs, found while building, are in `../baton/notes/reviews/2026-10-03-caton-dogfooding.md`.
+
