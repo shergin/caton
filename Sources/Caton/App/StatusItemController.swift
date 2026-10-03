@@ -19,9 +19,13 @@ final class StatusItemController: NSObject {
 
     init(model: AppModel) {
         self.model = model
-        panel = NotificationPanel()
+        panel = NotificationPanel(size: model.preferences.panelSize)
         super.init()
-        panel.host(NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() })))
+        let hosting = NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() }))
+        // The window decides its size; the content fits whatever it is given.
+        hosting.sizingOptions = []
+        panel.host(hosting)
+        panel.onResize = { [weak model] size in model?.preferences.panelSize = size }
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(clicked)
@@ -44,14 +48,35 @@ final class StatusItemController: NSObject {
     }
 
     func showPanel() {
-        guard let button = statusItem.button, let window = button.window else { return }
+        showPanel(attempts: 40)
+    }
+
+    /// Places the panel under the icon. Right after launch the icon is not in
+    /// the menu bar yet and reports a frame at the bottom of the screen; the
+    /// panel waits for it rather than opening off screen.
+    private func showPanel(attempts: Int) {
+        guard let button = statusItem.button, let window = button.window,
+              let screen = window.screen ?? NSScreen.main
+        else { return }
         let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        let menuBarBottom = screen.visibleFrame.maxY
+        guard buttonFrame.minY >= menuBarBottom - 1 else {
+            guard attempts > 0 else { return }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                self?.showPanel(attempts: attempts - 1)
+            }
+            return
+        }
         let size = panel.frame.size
-        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let visible = screen.visibleFrame
         // Where a status item's menu drops: its left edge at the icon's,
         // pushed back onto the screen when it would run off the right.
-        let x = min(max(buttonFrame.minX, screen.minX + 4), screen.maxX - size.width - 4)
-        panel.setFrameOrigin(NSPoint(x: x, y: buttonFrame.minY - size.height - NotificationPanel.gap))
+        let x = max(visible.minX + 4, min(buttonFrame.minX, visible.maxX - size.width - 4))
+        let top = menuBarBottom - NotificationPanel.gap
+        // A panel taller than the screen below the menu bar is shortened to fit.
+        let height = min(size.height, top - visible.minY - 4)
+        panel.setFrame(NSRect(x: x, y: top - height, width: size.width, height: height), display: false)
         panel.present()
         // The button clears its highlight as the click that opened us ends;
         // hold it on the next turn, as a status item does while its menu is open.
@@ -115,7 +140,7 @@ final class StatusItemController: NSObject {
     /// Renders the panel's content to a PNG, for checking layout without
     /// screen recording permission.
     func snapshot(to url: URL) {
-        for (view, file) in [(panel.contentView, url), (statusItem.button, url.deletingPathExtension().appendingPathExtension("menubar.png"))] {
+        for (view, file) in [(panel.hostedView, url), (statusItem.button, url.deletingPathExtension().appendingPathExtension("menubar.png"))] {
             guard let view, let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: representation)
             try? representation.representation(using: .png, properties: [:])?.write(to: file)
@@ -145,22 +170,35 @@ final class StatusItemController: NSObject {
     }
 }
 
-/// A floating, non-activating panel in a menu's clothes: borderless, the
-/// menu material behind rounded corners, the window server's shadow. It takes
-/// the keyboard without bringing the app forward, and sits above full-screen
-/// apps on the current Space.
+/// A floating, non-activating panel drawn the way macOS 26 draws a menu.
+/// Measured with scripts/menu-probe.swift: an `NSPopupMenuWindow` is a
+/// borderless, non-opaque window with a shadow whose background is an
+/// `NSGlassView`, AppKit's own `NSGlassEffectView`, at a corner radius of 12
+/// in the regular style. This panel is the same, so it looks like a menu, but
+/// it is an ordinary window: it takes the keyboard without bringing the app
+/// forward, and it resizes from its sides and bottom while its top stays
+/// under the menu bar.
+///
+/// The content sits above the glass rather than inside it: the glass treats
+/// what it holds as vibrant, which would grey out the inbox's colors.
 final class NotificationPanel: NSPanel {
-    static let size = NSSize(width: 420, height: 560)
-    /// The corner radius of macOS 26 menus, measured by eye.
+    static let defaultSize = NSSize(width: 420, height: 560)
+    static let minimumSize = NSSize(width: 360, height: 320)
     static let cornerRadius: CGFloat = 12
     /// The space between the menu bar and the panel, as menus leave.
     static let gap: CGFloat = 3
 
-    private let background = NSVisualEffectView()
+    private let glass = NSGlassEffectView()
+    private let container: NSView
+    /// The content, above the glass.
+    private(set) var hostedView: NSView?
     private var fade: Task<Void, Never>?
+    /// Called with the new size when the user finishes resizing.
+    var onResize: ((NSSize) -> Void)?
 
-    init() {
-        super.init(contentRect: NSRect(origin: .zero, size: Self.size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    init(size: NSSize) {
+        container = NSView(frame: NSRect(origin: .zero, size: size))
+        super.init(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
         level = .popUpMenu
         hidesOnDeactivate = false
@@ -169,21 +207,34 @@ final class NotificationPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
+        minSize = Self.minimumSize
         collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .transient, .ignoresCycle]
 
-        // The material menus are drawn with, kept active although the app is not.
-        background.material = .menu
-        background.blendingMode = .behindWindow
-        background.state = .active
-        background.maskImage = Self.roundedMask(radius: Self.cornerRadius)
-        contentView = background
+        // Menus have the window server round the window, its edge and its
+        // shadow (AppKit's private `_setCornerRadius:`, 12 for a menu window);
+        // without it the server outlines the window's rectangle around the glass.
+        if responds(to: Selector(("_setCornerRadius:"))) {
+            setValue(Self.cornerRadius, forKey: "cornerRadius")
+        }
+
+        glass.cornerRadius = Self.cornerRadius
+        glass.style = .regular
+        glass.frame = container.bounds
+        glass.autoresizingMask = [.width, .height]
+        container.addSubview(glass)
+        // The handles sit above the glass, along the edges a menu could grow from.
+        for edge in ResizeHandle.Edge.allCases {
+            container.addSubview(ResizeHandle(edge: edge, in: container.bounds))
+        }
+        contentView = container
     }
 
-    /// Puts the content on the material, filling it.
+    /// Puts the content above the glass, filling it, under the resize handles.
     func host(_ view: NSView) {
-        view.frame = background.bounds
+        view.frame = container.bounds
         view.autoresizingMask = [.width, .height]
-        background.addSubview(view)
+        container.addSubview(view, positioned: .above, relativeTo: glass)
+        hostedView = view
     }
 
     /// Shows the panel with a menu's quick fade.
@@ -212,20 +263,108 @@ final class NotificationPanel: NSPanel {
         }
     }
 
+    func didFinishResizing() {
+        invalidateShadow()
+        onResize?(frame.size)
+    }
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// A stretchable rounded rectangle: the material shows only inside it,
-    /// and the shadow follows it.
-    private static func roundedMask(radius: CGFloat) -> NSImage {
-        let edge = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
+    /// As a menu window: the rounded corners also shape the shadow.
+    @objc(_cornerMaskShouldDefineShadow) private func cornerMaskShouldDefineShadow() -> Bool { true }
+
+    /// As a menu window: the window server's menu shadow.
+    @objc(shadowOptions) private func menuShadowOptions() -> UInt { 2 }
+}
+
+/// A strip along one edge of the panel that resizes it. A borderless window
+/// has no resize edges of its own; these stand in, with the system's resize
+/// cursors. The top edge is not one of them: the panel hangs from the menu bar.
+final class ResizeHandle: NSView {
+    enum Edge: CaseIterable {
+        case left, right, bottom, bottomLeft, bottomRight
+    }
+
+    static let thickness: CGFloat = 5
+    static let corner: CGFloat = 14
+
+    private let edge: Edge
+    private var startFrame = NSRect.zero
+    private var startMouse = NSPoint.zero
+
+    init(edge: Edge, in bounds: NSRect) {
+        self.edge = edge
+        let thickness = Self.thickness
+        let corner = Self.corner
+        let frame: NSRect
+        let mask: NSView.AutoresizingMask
+        switch edge {
+        case .left:
+            frame = NSRect(x: 0, y: corner, width: thickness, height: bounds.height - corner)
+            mask = [.height, .maxXMargin]
+        case .right:
+            frame = NSRect(x: bounds.width - thickness, y: corner, width: thickness, height: bounds.height - corner)
+            mask = [.height, .minXMargin]
+        case .bottom:
+            frame = NSRect(x: corner, y: 0, width: bounds.width - corner * 2, height: thickness)
+            mask = [.width, .maxYMargin]
+        case .bottomLeft:
+            frame = NSRect(x: 0, y: 0, width: corner, height: corner)
+            mask = [.maxXMargin, .maxYMargin]
+        case .bottomRight:
+            frame = NSRect(x: bounds.width - corner, y: 0, width: corner, height: corner)
+            mask = [.minXMargin, .maxYMargin]
         }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
+        super.init(frame: frame)
+        autoresizingMask = mask
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func resetCursorRects() {
+        let cursor: NSCursor = switch edge {
+        case .left: .frameResize(position: .left, directions: .all)
+        case .right: .frameResize(position: .right, directions: .all)
+        case .bottom: .frameResize(position: .bottom, directions: .all)
+        case .bottomLeft: .frameResize(position: .bottomLeft, directions: .all)
+        case .bottomRight: .frameResize(position: .bottomRight, directions: .all)
+        }
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        startFrame = window.frame
+        startMouse = NSEvent.mouseLocation
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window else { return }
+        let mouse = NSEvent.mouseLocation
+        let dx = mouse.x - startMouse.x
+        let dy = mouse.y - startMouse.y
+        let minimum = window.minSize
+        let visible = window.screen?.visibleFrame ?? .infinite
+        var frame = startFrame
+        if edge == .left || edge == .bottomLeft {
+            let width = max(minimum.width, startFrame.width - dx)
+            frame.origin.x = max(visible.minX, startFrame.maxX - width)
+            frame.size.width = startFrame.maxX - frame.origin.x
+        }
+        if edge == .right || edge == .bottomRight {
+            frame.size.width = min(max(minimum.width, startFrame.width + dx), visible.maxX - startFrame.minX)
+        }
+        if edge == .bottom || edge == .bottomLeft || edge == .bottomRight {
+            // The top stays where it is; the bottom follows the mouse.
+            let height = min(max(minimum.height, startFrame.height - dy), startFrame.maxY - visible.minY)
+            frame.origin.y = startFrame.maxY - height
+            frame.size.height = height
+        }
+        window.setFrame(frame, display: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        (window as? NotificationPanel)?.didFinishResizing()
     }
 }

@@ -17,6 +17,13 @@ final class Preferences {
     var quietHours: QuietHours { didSet { defaults.set(try? JSONEncoder().encode(quietHours), forKey: "quietHours") } }
     /// The Needs me count beside the icon; off shows the filled icon alone.
     var showsCount: Bool { didSet { defaults.set(showsCount, forKey: "showsCount") } }
+    /// The panel's size, as the user last left it.
+    var panelSize: NSSize {
+        didSet {
+            defaults.set(panelSize.width, forKey: "panelWidth")
+            defaults.set(panelSize.height, forKey: "panelHeight")
+        }
+    }
     /// The global shortcut that toggles the panel.
     var hotKey: HotKeyCombination { didSet { defaults.set(try? JSONEncoder().encode(hotKey), forKey: "hotKey") } }
     /// What the shortcut registered as, or why it could not be.
@@ -31,6 +38,9 @@ final class Preferences {
         alertsEnabled = defaults.object(forKey: "alertsEnabled") as? Bool ?? true
         quietHours = defaults.data(forKey: "quietHours").flatMap { try? JSONDecoder().decode(QuietHours.self, from: $0) } ?? QuietHours()
         showsCount = defaults.object(forKey: "showsCount") as? Bool ?? true
+        let width = defaults.double(forKey: "panelWidth")
+        let height = defaults.double(forKey: "panelHeight")
+        panelSize = width > 0 && height > 0 ? NSSize(width: width, height: height) : NotificationPanel.defaultSize
         hotKey = defaults.data(forKey: "hotKey").flatMap { try? JSONDecoder().decode(HotKeyCombination.self, from: $0) } ?? .standard
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
     }

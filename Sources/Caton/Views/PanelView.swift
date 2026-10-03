@@ -15,12 +15,9 @@ struct PanelView: View {
                 SignInView(model: model)
             }
         }
-        .frame(minWidth: 420, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
-        // The window draws the menu material; a hairline rim finishes its edge.
-        .overlay {
-            RoundedRectangle(cornerRadius: NotificationPanel.cornerRadius)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
-        }
+        // The glass behind draws the background and the edge; the content
+        // takes whatever size the panel has.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
     }
 }
