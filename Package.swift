@@ -27,6 +27,12 @@ let package = Package(
             plugins: [.plugin(name: "BatonPlugin", package: "baton")]
         ),
         .testTarget(
+            name: "CatonTests",
+            dependencies: ["Caton", "CatonCore"],
+            path: "Tests/CatonTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
             name: "CatonCoreTests",
             dependencies: ["CatonCore"],
             path: "Tests/CatonCoreTests",

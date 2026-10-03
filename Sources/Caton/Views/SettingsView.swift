@@ -61,7 +61,12 @@ struct SettingsView: View {
                 Text(error).font(.caption).foregroundStyle(.orange)
             }
             Toggle("Show the Needs me count in the menu bar", isOn: $preferences.showsCount)
-            LabeledContent("Global shortcut", value: "⌘'  (⌥⌘' when taken)")
+            LabeledContent("Global shortcut") {
+                HotKeyRecorder(preferences: preferences)
+            }
+            if let status = preferences.hotKeyStatus {
+                Text(status).font(.caption).foregroundStyle(.orange)
+            }
         }
         .formStyle(.grouped)
     }
@@ -160,5 +165,43 @@ extension Rule {
         case .botPullRequests: "Moves pull requests opened by bots (Dependabot, Renovate…) to Feed."
         case .mutedRepositories: "Clears threads in repositories you muted here."
         }
+    }
+}
+
+/// Records a shortcut: click, press a combination with Command, Option or
+/// Control; Escape cancels.
+struct HotKeyRecorder: View {
+    @Bindable var preferences: Preferences
+    @State private var isRecording = false
+    @State private var monitor: Any?
+
+    var body: some View {
+        Button(isRecording ? "Type a shortcut…" : preferences.hotKey.display) {
+            isRecording ? stop() : start()
+        }
+        .frame(minWidth: 120)
+        .onDisappear(perform: stop)
+    }
+
+    private func start() {
+        isRecording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            nonisolated(unsafe) let key = event
+            MainActor.assumeIsolated {
+                if key.keyCode == 53 {
+                    stop()
+                } else if let combination = HotKeyCombination(event: key) {
+                    preferences.hotKey = combination
+                    stop()
+                }
+            }
+            return nil
+        }
+    }
+
+    private func stop() {
+        isRecording = false
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
     }
 }

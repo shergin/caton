@@ -125,7 +125,9 @@ final class AppModel {
 
     // MARK: Private state
 
-    @ObservationIgnored private var persistence = StatePersistence()
+    @ObservationIgnored private let persistence: StatePersistence
+    /// Opens a thread's page; the browser by default.
+    @ObservationIgnored let openURL: @MainActor (URL) -> Void
     @ObservationIgnored private var batonImage: Persistence?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var signInTask: Task<Void, Never>?
@@ -133,8 +135,14 @@ final class AppModel {
     /// Whether the session's first poll has landed; until then nothing alerts.
     @ObservationIgnored private var alertsArmed = false
 
-    init(preferences: Preferences = Preferences()) {
+    init(
+        preferences: Preferences = Preferences(),
+        persistence: StatePersistence = StatePersistence(),
+        openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
+    ) {
         self.preferences = preferences
+        self.persistence = persistence
+        self.openURL = openURL
     }
 
     // MARK: Lifecycle

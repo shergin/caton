@@ -120,7 +120,7 @@ extension AppModel {
         let items = targets(id)
         guard !items.isEmpty else { return false }
         for item in items {
-            NSWorkspace.shared.open(item.thread.webURL)
+            openURL(item.thread.webURL)
             if item.isUnread {
                 state.readMarks[item.id] = item.thread.updatedAt
                 state.queue.enqueue(.markRead, [.init(threadID: item.id, activity: item.thread.updatedAt)], now: .now, grace: 0)

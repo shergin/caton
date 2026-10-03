@@ -17,12 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem?.showPanel()
             self?.model.reveal(threadID)
         }
-        // Cmd+' by default, as the reference app; Option+Cmd+' when another app
-        // holds it. The hot key is the one entry point when the menu bar hides
-        // the icon.
-        let toggle: @MainActor () -> Void = { [weak statusItem] in statusItem?.togglePanel() }
-        hotKey = HotKey(keyCode: 39, modifiers: .command, action: toggle)
-            ?? HotKey(keyCode: 39, modifiers: [.command, .option], action: toggle)
+        registerHotKey()
         if case .signedOut = model.account {
             statusItem.showPanel()
         }
@@ -51,6 +46,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         #endif
+    }
+
+    /// Registers the user's shortcut, and again whenever it changes. The hot
+    /// key is the one entry point when the menu bar hides the icon.
+    private func registerHotKey() {
+        let preferences = model.preferences
+        let combination = withObservationTracking { preferences.hotKey } onChange: {
+            Task { @MainActor [weak self] in self?.registerHotKey() }
+        }
+        hotKey = nil
+        let toggle: @MainActor () -> Void = { [weak self] in self?.statusItem?.togglePanel() }
+        if let registered = HotKey(keyCode: combination.keyCode, modifiers: combination.modifierFlags, action: toggle) {
+            hotKey = registered
+            preferences.hotKeyStatus = nil
+        } else if combination == .standard, let registered = HotKey(keyCode: HotKeyCombination.fallback.keyCode, modifiers: HotKeyCombination.fallback.modifierFlags, action: toggle) {
+            // Another app holds Cmd+'; Option+Cmd+' stands in until the user picks one.
+            hotKey = registered
+            preferences.hotKeyStatus = "\(combination.display) is taken by another app; using \(HotKeyCombination.fallback.display)."
+        } else {
+            preferences.hotKeyStatus = "\(combination.display) is taken by another app. Pick another."
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
