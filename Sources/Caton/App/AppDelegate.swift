@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settings = SettingsWindowController(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The bundled app takes its icon from Info.plist; `swift run` has none.
+        if Bundle.main.bundleIdentifier == nil, let icon = Assets.appIcon {
+            NSApp.applicationIconImage = icon
+        }
         model.openSettings = { [weak self] in self?.settings.show() }
         model.start()
         let statusItem = StatusItemController(model: model)

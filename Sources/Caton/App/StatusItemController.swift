@@ -100,9 +100,11 @@ final class StatusItemController: NSObject {
     /// Renders the panel's content to a PNG, for checking layout without
     /// screen recording permission.
     func snapshot(to url: URL) {
-        guard let view = panel.contentView, let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: representation)
-        try? representation.representation(using: .png, properties: [:])?.write(to: url)
+        for (view, file) in [(panel.contentView, url), (statusItem.button, url.deletingPathExtension().appendingPathExtension("menubar.png"))] {
+            guard let view, let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: representation)
+            try? representation.representation(using: .png, properties: [:])?.write(to: file)
+        }
     }
     #endif
 
@@ -119,10 +121,8 @@ final class StatusItemController: NSObject {
         guard let button = statusItem.button else { return }
         let count = model.needsMeCount
         let signedIn = if case .signedIn = model.account { true } else { false }
-        let symbol = !signedIn ? "pawprint" : count > 0 ? "pawprint.fill" : "pawprint"
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Caton")
-        image?.isTemplate = true
-        button.image = image
+        let state: Assets.MenuBar = !signedIn || model.errorMessage != nil ? .disabled : count > 0 ? .active : .enabled
+        button.image = Assets.menuBar(state)
         button.title = signedIn && count > 0 && model.preferences.showsCount ? " \(count)" : ""
         let description = signedIn ? (count == 1 ? "1 thing needs you" : "\(count) things need you") : "Signed out"
         button.toolTip = "Caton · \(description)"

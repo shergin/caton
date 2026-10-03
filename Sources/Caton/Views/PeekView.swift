@@ -183,6 +183,7 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            LogoImage(size: 36)
             Text("Of \(welcome.total) notifications, \(welcome.needsMe == 1 ? "1 needs" : "\(welcome.needsMe) need") you.")
                 .font(.system(size: 14, weight: .semibold))
             let cleared = welcome.cleared.values.reduce(0, +)

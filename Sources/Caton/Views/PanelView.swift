@@ -52,6 +52,7 @@ struct InboxView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
+                LogoImage(size: 16)
                 Text("Caton").font(.system(size: 13, weight: .semibold))
                 if model.dryRun {
                     Text("DRY RUN").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
@@ -286,9 +287,14 @@ struct EmptyState: View {
     var body: some View {
         VStack(spacing: 6) {
             Spacer()
-            Image(systemName: filtered ? "magnifyingglass" : section == .split(.needsMe) ? "pawprint" : "tray")
-                .font(.system(size: 24))
-                .foregroundStyle(.tertiary)
+            if !filtered, section == .split(.needsMe) {
+                // Caught up: the logo's happy cat.
+                LogoImage(size: 48)
+            } else {
+                Image(systemName: filtered ? "magnifyingglass" : "tray")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.tertiary)
+            }
             Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
             if section == .split(.needsMe), !filtered, clearedToday > 0 {
                 Text("\(clearedToday) cleared by rules this week").font(.system(size: 11)).foregroundStyle(.tertiary)

@@ -23,6 +23,7 @@ let package = Package(
                 .product(name: "Baton", package: "baton"),
             ],
             path: "Sources/Caton",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)],
             plugins: [.plugin(name: "BatonPlugin", package: "baton")]
         ),

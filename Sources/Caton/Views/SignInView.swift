@@ -6,9 +6,9 @@ struct SignInView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "pawprint.fill").font(.system(size: 20))
-                Text("Caton").font(.system(size: 18, weight: .semibold))
+            HStack(spacing: 10) {
+                LogoImage(size: 40)
+                Text("Caton").font(.system(size: 20, weight: .semibold))
             }
             Text("The GitHub inbox that shows only what needs you. Sign in to read your notifications; your token stays on this Mac.")
                 .font(.system(size: 12))
@@ -82,6 +82,21 @@ struct SignInView: View {
             }
             Link("Create a token with the right scopes →", destination: URL(string: "https://github.com/settings/tokens/new?scopes=notifications,repo&description=Caton")!)
                 .font(.system(size: 11))
+        }
+    }
+}
+
+/// The logo at a size in points.
+struct LogoImage: View {
+    let size: CGFloat
+
+    var body: some View {
+        if let logo = Assets.logo {
+            Image(nsImage: logo)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
         }
     }
 }

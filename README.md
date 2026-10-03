@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Caton's logo: a yellow cat sticking its tongue out" width="128">
+</p>
+
 # Caton
 
 A macOS menu bar inbox for GitHub notifications that shows only what needs
@@ -35,6 +39,10 @@ unsubscribed on GitHub. `CATON_GITHUB_TOKEN=$(gh auth token)` signs in without
 the sign-in screen. Debug builds also take `CATON_OPEN_PANEL=1`,
 `CATON_SECTION=0…3`, `CATON_SNAPSHOT=/path.png` (renders the panel to a file)
 and `CATON_DUMP=1` (prints the classified inbox to stderr).
+
+`./scripts/icons.sh` renders the menu bar images, the in-app logo and the app
+icon into `Sources/Caton/Resources` from `logo.png` and `icon-*.png` at the
+root; run it after changing those.
 
 `./scripts/bundle.sh` builds `build/Caton.app`. "Sign in with GitHub" uses
 the device flow of Caton's OAuth App (client id `Ov23liz9s5AlvZVZWZ2k`; no
