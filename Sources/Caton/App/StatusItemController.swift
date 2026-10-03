@@ -3,6 +3,12 @@ import SwiftUI
 
 /// The menu bar icon with the Needs me count, the panel it opens, and the
 /// dismissal rules around it: Esc, a click elsewhere, opening a thread.
+///
+/// The panel is dressed as the menu a status item drops: the menu material,
+/// no title bar, flush under the menu bar, left-aligned with the icon, the
+/// icon held highlighted while it is open, and a menu's quick fade. A real
+/// `NSMenu` would give the same chrome but run its own tracking loop that owns
+/// the keyboard, which a keyboard-first inbox cannot give up.
 @MainActor
 final class StatusItemController: NSObject {
     private let model: AppModel
@@ -15,7 +21,7 @@ final class StatusItemController: NSObject {
         self.model = model
         panel = NotificationPanel()
         super.init()
-        panel.contentView = NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() }))
+        panel.host(NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() })))
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(clicked)
@@ -34,7 +40,7 @@ final class StatusItemController: NSObject {
     }
 
     func togglePanel() {
-        if panel.isVisible { closePanel() } else { showPanel() }
+        if model.isPanelVisible { closePanel() } else { showPanel() }
     }
 
     func showPanel() {
@@ -42,15 +48,24 @@ final class StatusItemController: NSObject {
         let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
         let size = panel.frame.size
         let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let x = min(max(buttonFrame.midX - size.width / 2, screen.minX + 8), screen.maxX - size.width - 8)
-        panel.setFrameOrigin(NSPoint(x: x, y: buttonFrame.minY - size.height - 6))
-        panel.makeKeyAndOrderFront(nil)
+        // Where a status item's menu drops: its left edge at the icon's,
+        // pushed back onto the screen when it would run off the right.
+        let x = min(max(buttonFrame.minX, screen.minX + 4), screen.maxX - size.width - 4)
+        panel.setFrameOrigin(NSPoint(x: x, y: buttonFrame.minY - size.height - NotificationPanel.gap))
+        panel.present()
+        // The button clears its highlight as the click that opened us ends;
+        // hold it on the next turn, as a status item does while its menu is open.
+        Task { @MainActor [weak self] in
+            guard let self, self.model.isPanelVisible else { return }
+            self.statusItem.button?.highlight(true)
+        }
         model.isPanelVisible = true
         installMonitors()
     }
 
     func closePanel() {
-        panel.orderOut(nil)
+        panel.dismiss()
+        statusItem.button?.highlight(false)
         model.isPanelVisible = false
         removeMonitors()
     }
@@ -130,33 +145,87 @@ final class StatusItemController: NSObject {
     }
 }
 
-/// A floating, non-activating panel: it takes the keyboard without bringing
-/// the app forward, and sits above full-screen apps on the current Space.
+/// A floating, non-activating panel in a menu's clothes: borderless, the
+/// menu material behind rounded corners, the window server's shadow. It takes
+/// the keyboard without bringing the app forward, and sits above full-screen
+/// apps on the current Space.
 final class NotificationPanel: NSPanel {
+    static let size = NSSize(width: 420, height: 560)
+    /// The corner radius of macOS 26 menus, measured by eye.
+    static let cornerRadius: CGFloat = 12
+    /// The space between the menu bar and the panel, as menus leave.
+    static let gap: CGFloat = 3
+
+    private let background = NSVisualEffectView()
+    private var fade: Task<Void, Never>?
+
     init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 560),
-            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
+        super.init(contentRect: NSRect(origin: .zero, size: Self.size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
-        level = .statusBar
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = false
+        level = .popUpMenu
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        animationBehavior = .utilityWindow
+        animationBehavior = .none
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        standardWindowButton(.closeButton)?.isHidden = true
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
+        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .transient, .ignoresCycle]
+
+        // The material menus are drawn with, kept active although the app is not.
+        background.material = .menu
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.maskImage = Self.roundedMask(radius: Self.cornerRadius)
+        contentView = background
+    }
+
+    /// Puts the content on the material, filling it.
+    func host(_ view: NSView) {
+        view.frame = background.bounds
+        view.autoresizingMask = [.width, .height]
+        background.addSubview(view)
+    }
+
+    /// Shows the panel with a menu's quick fade.
+    func present() {
+        fade?.cancel()
+        alphaValue = 0
+        makeKeyAndOrderFront(nil)
+        invalidateShadow()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.08
+            animator().alphaValue = 1
+        }
+    }
+
+    /// Hides the panel with a menu's quick fade.
+    func dismiss() {
+        guard isVisible else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            animator().alphaValue = 0
+        }
+        fade = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            self?.orderOut(nil)
+        }
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// A stretchable rounded rectangle: the material shows only inside it,
+    /// and the shadow follows it.
+    private static func roundedMask(radius: CGFloat) -> NSImage {
+        let edge = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
 }

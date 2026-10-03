@@ -16,8 +16,11 @@ struct PanelView: View {
             }
         }
         .frame(minWidth: 420, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // The window draws the menu material; a hairline rim finishes its edge.
+        .overlay {
+            RoundedRectangle(cornerRadius: NotificationPanel.cornerRadius)
+                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
+        }
         .ignoresSafeArea()
     }
 }
@@ -134,7 +137,7 @@ struct InboxView: View {
         let waiting = model.section == .split(.needsMe)
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(spacing: 0) {
                     ForEach(groups, id: \.title) { group in
                         Section {
                             ForEach(group.items) { item in
@@ -166,8 +169,8 @@ struct InboxView: View {
                                     .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(Color(nsColor: .windowBackgroundColor))
+                                    .padding(.top, 6)
+                                    .padding(.bottom, 2)
                             }
                         }
                     }

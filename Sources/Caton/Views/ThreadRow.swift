@@ -74,9 +74,14 @@ struct ThreadRow: View {
                 }
             }
         }
-        .padding(.trailing, 12)
+        .padding(.trailing, 7)
         .frame(height: 46)
-        .background(isSelected ? Color.accentColor.opacity(0.16) : isHovered ? Color.primary.opacity(0.04) : .clear)
+        // A menu item's highlight: inset, rounded.
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.3) : isHovered ? Color.primary.opacity(0.06) : .clear)
+        )
+        .padding(.horizontal, 5)
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
         .onHover { isHovered = $0 }
