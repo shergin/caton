@@ -68,6 +68,30 @@ struct ClassifierTests {
         #expect(result.clearedBy == nil)
     }
 
+    @Test func an_old_mention_on_a_subject_a_bot_closed_is_not_a_new_ask() {
+        var facts = makeFacts(state: .closed)
+        facts.latestCommenter = SubjectActor(login: "react-native-bot", isApp: true)
+        let result = Classifier.classify(makeThread(kind: .issue, reason: .mention), facts: facts, settings: settings)
+        #expect(result.split == .following)
+        #expect(result.clearedBy == .mergedOrClosed)
+    }
+
+    @Test func a_machine_user_named_like_a_bot_is_a_bot() {
+        #expect(settings.kind(of: SubjectActor(login: "react-native-bot", isApp: false)) == .bot)
+        #expect(settings.kind(of: SubjectActor(login: "k8s-ci-robot", isApp: false)) == .bot)
+        #expect(settings.kind(of: SubjectActor(login: "abbot", isApp: false)) == .human)
+        var listed = settings
+        listed.botLogins = ["ci-helper"]
+        #expect(listed.kind(of: SubjectActor(login: "CI-Helper", isApp: false)) == .bot)
+    }
+
+    @Test func a_mention_after_a_human_comment_on_a_closed_subject_still_needs_the_viewer() {
+        var facts = makeFacts(state: .closed)
+        facts.latestCommenter = SubjectActor(login: "maintainer", isApp: false)
+        let result = Classifier.classify(makeThread(kind: .issue, reason: .mention), facts: facts, settings: settings)
+        #expect(result.split == .needsMe)
+    }
+
     @Test func a_bot_pull_request_is_routed_to_feed() {
         let facts = makeFacts(author: "dependabot", authorIsApp: true)
         let result = Classifier.classify(makeThread(reason: .comment), facts: facts, settings: settings)

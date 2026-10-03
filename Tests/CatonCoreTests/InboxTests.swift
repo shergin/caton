@@ -142,3 +142,15 @@ struct InboxProjectionTests {
         #expect(snapshot.count(.needsMe) == 1)
     }
 }
+
+struct LocalStateTests {
+    @Test func a_document_from_an_earlier_version_decodes_with_empty_new_fields() throws {
+        let json = #"{"dismissals":{},"readMarks":{"1":0},"snoozes":{},"later":{},"cleared":[],"ruleExemptions":{},"settings":{"enabledRules":["drafts"],"mutedRepositories":[],"aiReviewerLogins":[],"agentLogins":[]},"queue":{"actions":[]}}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let state = try decoder.decode(LocalState.self, from: Data(json.utf8))
+        #expect(state.readMarks.count == 1)
+        #expect(state.alerted.isEmpty)
+        #expect(state.settings.enabledRules == [.drafts])
+    }
+}

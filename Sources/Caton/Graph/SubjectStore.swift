@@ -40,6 +40,20 @@ final class SubjectStore {
         let activity: Date
     }
 
+    /// The fragments a row renders, from whichever operation loaded the subject.
+    struct Lenses {
+        var pullRequestIcon: PullRequestIcon_pullRequest?
+        var pullRequestSignals: PullRequestSignals_pullRequest?
+        var issueIcon: IssueIcon_issue?
+        var issueSignals: IssueSignals_issue?
+    }
+
+    typealias ReviewRequest = ReviewRequestsQuery.Data.Search.Nodes.AsPullRequest
+
+    /// Threads built from review requests that have no notification carry
+    /// this prefix; they have no thread on GitHub to mark.
+    static let reviewRequestPrefix = "review:"
+    static let reviewRequestInterval: TimeInterval = 5 * 60
     static let concurrency = 4
     static let batchSize = 50
     static let refreshInterval: TimeInterval = 10 * 60
@@ -58,11 +72,56 @@ final class SubjectStore {
     private var queued: Set<String> = []
     private var inFlight = 0
     private var lastRefresh = Date.distantPast
+    private let reviewRequests: OperationHandle<ReviewRequestsQuery>
+    private var lastReviewRequestSearch = Date.distantPast
+    private var reviewRequestsByThreadID: [String: ReviewRequest] = [:]
+    /// Review requests without a notification thread, as threads.
+    private(set) var reviewRequestThreads: [NotificationThread] = []
 
     init(environment: Baton.Environment, viewerID: String, fetchedActivity: [String: Date]) {
         self.environment = environment
         self.viewerID = viewerID
         self.fetchedActivity = fetchedActivity
+        reviewRequests = environment.handle(for: ReviewRequestsQuery(), fetchPolicy: .storeOnly)
+        reviewRequests.retain()
+        indexReviewRequests()
+    }
+
+    /// Searches for open pull requests that request the viewer by name, at
+    /// most every few minutes; forced, at most once a minute.
+    func searchReviewRequests(force: Bool = false, now: Date = .now) {
+        let age = now.timeIntervalSince(lastReviewRequestSearch)
+        guard age > (force ? 60 : Self.reviewRequestInterval) else { return }
+        lastReviewRequestSearch = now
+        Task {
+            await reviewRequests.refetch()
+            indexReviewRequests()
+            onChange?()
+        }
+    }
+
+    private func indexReviewRequests() {
+        guard case .ready(let data) = reviewRequests.phase, let nodes = data.search.nodes else { return }
+        var byThreadID: [String: ReviewRequest] = [:]
+        var threads: [NotificationThread] = []
+        for node in nodes {
+            guard let pullRequest = node.asPullRequest, let url = URL(string: pullRequest.url) else { continue }
+            let id = Self.reviewRequestPrefix + pullRequest.id
+            byThreadID[id] = pullRequest
+            threads.append(NotificationThread(
+                id: id,
+                repository: RepositoryName(owner: pullRequest.repository.owner.login, name: pullRequest.repository.name),
+                kind: .pullRequest,
+                number: pullRequest.number,
+                title: pullRequest.title,
+                reason: .reviewRequested,
+                isUnread: true,
+                updatedAt: (try? Date(pullRequest.updatedAt, strategy: .iso8601)) ?? .now,
+                webURL: url
+            ))
+        }
+        reviewRequestsByThreadID = byThreadID
+        reviewRequestThreads = threads
     }
 
     /// Brings handles in line with the inbox's threads and starts what is due:
@@ -104,6 +163,9 @@ final class SubjectStore {
 
     /// The facts classification reads, once the subject is loaded.
     func facts(for thread: NotificationThread) -> SubjectFacts? {
+        if let reviewRequest = reviewRequestsByThreadID[thread.id] {
+            return PullRequestFactsReader(pullRequest: reviewRequest.pullRequestFacts).facts(viewerID: viewerID)
+        }
         switch handles[thread.id] {
         case .pullRequest(let handle):
             guard case .ready(let data) = handle.phase, let pullRequest = data.repository?.pullRequest else { return nil }
@@ -116,20 +178,26 @@ final class SubjectStore {
         }
     }
 
-    /// The pull request a row renders, once loaded.
-    func pullRequest(for threadID: String) -> PullRequestSubjectQuery.Data.Repository.PullRequest? {
-        guard case .pullRequest(let handle) = handles[threadID], case .ready(let data) = handle.phase else { return nil }
-        return data.repository?.pullRequest
-    }
-
-    /// The issue a row renders, once loaded.
-    func issue(for threadID: String) -> IssueSubjectQuery.Data.Repository.Issue? {
-        guard case .issue(let handle) = handles[threadID], case .ready(let data) = handle.phase else { return nil }
-        return data.repository?.issue
+    /// What a row renders, once the subject is loaded.
+    func lenses(for threadID: String) -> Lenses {
+        if let reviewRequest = reviewRequestsByThreadID[threadID] {
+            return Lenses(pullRequestIcon: reviewRequest.pullRequestIcon, pullRequestSignals: reviewRequest.pullRequestSignals)
+        }
+        switch handles[threadID] {
+        case .pullRequest(let handle):
+            guard case .ready(let data) = handle.phase, let pullRequest = data.repository?.pullRequest else { return Lenses() }
+            return Lenses(pullRequestIcon: pullRequest.pullRequestIcon, pullRequestSignals: pullRequest.pullRequestSignals)
+        case .issue(let handle):
+            guard case .ready(let data) = handle.phase, let issue = data.repository?.issue else { return Lenses() }
+            return Lenses(issueIcon: issue.issueIcon, issueSignals: issue.issueSignals)
+        case nil:
+            return Lenses()
+        }
     }
 
     /// Releases every handle, for a sign-out.
     func releaseAll() {
+        reviewRequests.release()
         for handle in handles.values { handle.release() }
         handles.removeAll()
         discovery.removeAll()

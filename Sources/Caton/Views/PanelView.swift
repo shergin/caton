@@ -10,6 +10,7 @@ struct PanelView: View {
             switch model.account {
             case .signedIn:
                 InboxView(model: model, close: close)
+                    .environment(\.baton, model.graph)
             case .signedOut, .connecting:
                 SignInView(model: model)
             }
@@ -142,8 +143,7 @@ struct InboxView: View {
                                     isChecked: model.checked.contains(item.id),
                                     showsWaiting: waiting,
                                     showsRepository: !model.groupByRepository,
-                                    pullRequest: model.pullRequest(for: item.id),
-                                    issue: model.issue(for: item.id),
+                                    lenses: model.lenses(for: item.id),
                                     onOpen: {
                                         model.select(item.id)
                                         if model.open(item.id) { close() }
@@ -211,6 +211,18 @@ struct InboxView: View {
         case .help:
             KeymapOverlay()
                 .onTapGesture { model.overlay = .none }
+        case .peek:
+            if let item = model.selectedItem {
+                PeekView(item: item)
+                    .onTapGesture { model.overlay = .none }
+            }
+        case .welcome:
+            if let welcome = model.welcome {
+                ZStack {
+                    Color.black.opacity(0.15)
+                    WelcomeView(model: model, welcome: welcome)
+                }
+            }
         }
     }
 
@@ -446,7 +458,7 @@ struct SettingsMenu: View {
                 ForEach(Rule.allCases, id: \.self) { rule in
                     Toggle(rule.title, isOn: Binding(get: { model.isEnabled(rule) }, set: { model.setEnabled(rule, $0) }))
                 }
-                Toggle("Mark rule-cleared threads done on GitHub", isOn: $model.syncRuleClears)
+                Toggle("Mark rule-cleared threads done on GitHub", isOn: Binding(get: { model.preferences.syncRuleClears }, set: { model.preferences.syncRuleClears = $0 }))
             }
             if !model.mutedRepositories.isEmpty {
                 Menu("Muted repositories") {
@@ -460,6 +472,7 @@ struct SettingsMenu: View {
                 Toggle("Unread only", isOn: $model.unreadOnly)
             }
             Divider()
+            Button("Settings…") { model.openSettings?() }
             Button("Refresh") { model.refresh() }
             if case .signedIn(let viewer) = model.account {
                 Button("Sign out @\(viewer.login)") { model.signOut() }

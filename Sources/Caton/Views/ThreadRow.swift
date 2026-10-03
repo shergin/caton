@@ -11,8 +11,7 @@ struct ThreadRow: View {
     let showsWaiting: Bool
     /// Whether line one names the repository; under a repository header it does not.
     let showsRepository: Bool
-    let pullRequest: PullRequestSubjectQuery.Data.Repository.PullRequest?
-    let issue: IssueSubjectQuery.Data.Repository.Issue?
+    let lenses: SubjectStore.Lenses
     let onOpen: () -> Void
     let onToggleCheck: () -> Void
     let onDone: () -> Void
@@ -43,6 +42,8 @@ struct ThreadRow: View {
                         .truncationMode(.middle)
                     if let note = item.resurfacing?.note {
                         Text(note).foregroundStyle(.orange).lineLimit(1)
+                    } else if item.id.hasPrefix(SubjectStore.reviewRequestPrefix) {
+                        Text("no notification").foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }
                 .font(.system(size: 11))
@@ -86,20 +87,20 @@ struct ThreadRow: View {
     @ViewBuilder private var glyph: some View {
         if isChecked {
             Image(systemName: "checkmark.square.fill").foregroundStyle(Color.accentColor)
-        } else if let pullRequest {
-            PullRequestIcon(pullRequest: pullRequest.pullRequestIcon, isUnread: item.isUnread)
-        } else if let issue {
-            IssueIcon(issue: issue.issueIcon, isUnread: item.isUnread)
+        } else if let pullRequest = lenses.pullRequestIcon {
+            PullRequestIcon(pullRequest: pullRequest, isUnread: item.isUnread)
+        } else if let issue = lenses.issueIcon {
+            IssueIcon(issue: issue, isUnread: item.isUnread)
         } else {
             KindGlyph(kind: item.thread.kind, isUnread: item.isUnread)
         }
     }
 
     @ViewBuilder private var signals: some View {
-        if let pullRequest {
-            PullRequestSignals(pullRequest: pullRequest.pullRequestSignals, actorKind: item.classification.actorKind)
-        } else if let issue {
-            IssueSignals(issue: issue.issueSignals, actorKind: item.classification.actorKind)
+        if let pullRequest = lenses.pullRequestSignals {
+            PullRequestSignals(pullRequest: pullRequest, actorKind: item.classification.actorKind)
+        } else if let issue = lenses.issueSignals {
+            IssueSignals(issue: issue, actorKind: item.classification.actorKind)
         }
     }
 }

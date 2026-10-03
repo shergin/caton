@@ -55,6 +55,9 @@ public struct SubjectFacts: Hashable, Sendable {
     public var viewerDidAuthor: Bool
     public var pendingReviewRequest: ReviewRequest?
     public var viewerLatestReview: ReviewState?
+    /// Who wrote the latest comment. A thread's reason stays at its first
+    /// value, so an old mention can outlive the conversation it came from.
+    public var latestCommenter: SubjectActor?
 
     public init(
         nodeID: String,
@@ -67,7 +70,8 @@ public struct SubjectFacts: Hashable, Sendable {
         author: SubjectActor? = nil,
         viewerDidAuthor: Bool = false,
         pendingReviewRequest: ReviewRequest? = nil,
-        viewerLatestReview: ReviewState? = nil
+        viewerLatestReview: ReviewState? = nil,
+        latestCommenter: SubjectActor? = nil
     ) {
         self.nodeID = nodeID
         self.state = state
@@ -80,6 +84,7 @@ public struct SubjectFacts: Hashable, Sendable {
         self.viewerDidAuthor = viewerDidAuthor
         self.pendingReviewRequest = pendingReviewRequest
         self.viewerLatestReview = viewerLatestReview
+        self.latestCommenter = latestCommenter
     }
 }
 

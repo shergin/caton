@@ -130,17 +130,35 @@ public struct ClassifierSettings: Codable, Hashable, Sendable {
     public var aiReviewerLogins: Set<String>
     /// Logins of coding agents that open pull requests, lowercased.
     public var agentLogins: Set<String>
+    /// Ordinary accounts the user knows are bots, lowercased.
+    public var botLogins: Set<String>
 
     public init(
         enabledRules: Set<Rule> = Set(Rule.allCases),
         mutedRepositories: Set<String> = [],
         aiReviewerLogins: Set<String> = ClassifierSettings.defaultAIReviewers,
-        agentLogins: Set<String> = ClassifierSettings.defaultAgents
+        agentLogins: Set<String> = ClassifierSettings.defaultAgents,
+        botLogins: Set<String> = []
     ) {
         self.enabledRules = enabledRules
         self.mutedRepositories = mutedRepositories
         self.aiReviewerLogins = aiReviewerLogins
         self.agentLogins = agentLogins
+        self.botLogins = botLogins
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabledRules, mutedRepositories, aiReviewerLogins, agentLogins, botLogins
+    }
+
+    /// Reads settings saved by earlier versions: a missing key takes its default.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabledRules = try container.decodeIfPresent(Set<Rule>.self, forKey: .enabledRules) ?? Set(Rule.allCases)
+        mutedRepositories = try container.decodeIfPresent(Set<String>.self, forKey: .mutedRepositories) ?? []
+        aiReviewerLogins = try container.decodeIfPresent(Set<String>.self, forKey: .aiReviewerLogins) ?? Self.defaultAIReviewers
+        agentLogins = try container.decodeIfPresent(Set<String>.self, forKey: .agentLogins) ?? Self.defaultAgents
+        botLogins = try container.decodeIfPresent(Set<String>.self, forKey: .botLogins) ?? []
     }
 
     public static let defaultAIReviewers: Set<String> = [
@@ -170,8 +188,14 @@ public struct ClassifierSettings: Codable, Hashable, Sendable {
         let login = actor.login.lowercased()
         if agentLogins.contains(login) { return .agent }
         if aiReviewerLogins.contains(login) { return .aiReviewer }
-        if actor.isApp || login.hasSuffix("[bot]") { return .bot }
+        if actor.isApp || botLogins.contains(login) || Self.looksLikeBot(login) { return .bot }
         return .human
+    }
+
+    /// Machine accounts that are ordinary users, named the way projects name
+    /// them: `react-native-bot`, `k8s-ci-robot`, `stale[bot]`.
+    static func looksLikeBot(_ login: String) -> Bool {
+        ["[bot]", "-bot", "_bot", "robot"].contains { login.hasSuffix($0) }
     }
 }
 
@@ -180,7 +204,7 @@ public struct ClassifierSettings: Codable, Hashable, Sendable {
 public enum Classifier {
     public static func classify(_ thread: NotificationThread, facts: SubjectFacts?, settings: ClassifierSettings) -> Classification {
         let actorKind = facts?.author.map(settings.kind(of:))
-        var (split, badge) = baseSplit(thread, facts: facts)
+        var (split, badge) = baseSplit(thread, facts: facts, settings: settings)
 
         // Rules never touch Needs me: a direct ask in a muted repository still arrives.
         if split != .needsMe, settings.enabledRules.contains(.mutedRepositories), settings.isMuted(thread.repository) {
@@ -207,7 +231,7 @@ public enum Classifier {
     }
 
     /// The split before rules: state first, then the notification's reason.
-    static func baseSplit(_ thread: NotificationThread, facts: SubjectFacts?) -> (Split, Badge) {
+    static func baseSplit(_ thread: NotificationThread, facts: SubjectFacts?, settings: ClassifierSettings) -> (Split, Badge) {
         // A pending request that names the viewer needs them whatever the reason says.
         if thread.kind == .pullRequest, let facts, facts.state == .open {
             if facts.pendingReviewRequest == .you {
@@ -216,6 +240,13 @@ public enum Classifier {
             if facts.viewerDidAuthor, let status = yourPullRequestStatus(facts) {
                 return (.needsMe, .yourPullRequest(status))
             }
+        }
+
+        // A closed subject whose last word came from a bot: the reason is a
+        // leftover from earlier activity, not a new ask.
+        if let facts, facts.state != .open, let commenter = facts.latestCommenter, settings.kind(of: commenter) != .human,
+           thread.reason == .mention || thread.reason == .assign || thread.reason == .teamMention {
+            return (.following, thread.reason == .assign ? .assigned : .mentioned)
         }
 
         switch thread.reason {

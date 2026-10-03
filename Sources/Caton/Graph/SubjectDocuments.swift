@@ -54,6 +54,29 @@ struct SubjectDocuments {
         """)
     var pullRequests: PullRequestRefreshQuery
 
+    /// Open pull requests that request the viewer by name. GitHub sometimes
+    /// requests a review without a notification; these fill Needs me anyway.
+    @Query("""
+        query ReviewRequestsQuery {
+          search(query: "is:pr is:open archived:false user-review-requested:@me", type: ISSUE, first: 50) {
+            nodes {
+              ... on PullRequest {
+                id
+                number
+                title
+                url
+                updatedAt
+                repository { name owner { login } }
+                ...PullRequestFacts_pullRequest @alias
+                ...PullRequestIcon_pullRequest @alias
+                ...PullRequestSignals_pullRequest @alias
+              }
+            }
+          }
+        }
+        """)
+    var reviewRequests: ReviewRequestsQuery
+
     @Query("""
         query IssueRefreshQuery($ids: [ID!]!) {
           nodes(ids: $ids) {
@@ -83,6 +106,7 @@ struct PullRequestFactsReader {
           author { login url avatarUrl }
           statusCheckRollup { state }
           viewerLatestReview { state }
+          comments(last: 1) { nodes { author { login url } } }
           viewerLatestReviewRequest {
             requestedReviewer {
               ... on User { id }
@@ -124,7 +148,8 @@ struct PullRequestFactsReader {
             author: pullRequest.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/"), avatarURL: URL(string: $0.avatarUrl)) },
             viewerDidAuthor: pullRequest.viewerDidAuthor,
             pendingReviewRequest: request,
-            viewerLatestReview: pullRequest.viewerLatestReview.flatMap { SubjectFacts.ReviewState(graphQL: $0.state) }
+            viewerLatestReview: pullRequest.viewerLatestReview.flatMap { SubjectFacts.ReviewState(graphQL: $0.state) },
+            latestCommenter: pullRequest.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) }
         )
     }
 }
@@ -139,6 +164,7 @@ struct IssueFactsReader {
           stateReason
           viewerDidAuthor
           author { login url avatarUrl }
+          comments(last: 1) { nodes { author { login url } } }
         }
         """)
     var issue: IssueFacts_issue
@@ -149,7 +175,8 @@ struct IssueFactsReader {
             state: issue.state == "OPEN" ? .open : .closed,
             closedReason: issue.stateReason.flatMap(SubjectFacts.ClosedReason.init(graphQL:)),
             author: issue.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/"), avatarURL: URL(string: $0.avatarUrl)) },
-            viewerDidAuthor: issue.viewerDidAuthor
+            viewerDidAuthor: issue.viewerDidAuthor,
+            latestCommenter: issue.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) }
         )
     }
 }

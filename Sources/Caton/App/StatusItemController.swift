@@ -85,6 +85,7 @@ final class StatusItemController: NSObject {
     private func showMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "r").target = self
+        menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Caton", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -93,6 +94,7 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func refresh() { model.refresh() }
+    @objc private func settings() { model.openSettings?() }
 
     #if DEBUG
     /// Renders the panel's content to a PNG, for checking layout without
@@ -121,7 +123,7 @@ final class StatusItemController: NSObject {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Caton")
         image?.isTemplate = true
         button.image = image
-        button.title = signedIn && count > 0 ? " \(count)" : ""
+        button.title = signedIn && count > 0 && model.preferences.showsCount ? " \(count)" : ""
         let description = signedIn ? (count == 1 ? "1 thing needs you" : "\(count) things need you") : "Signed out"
         button.toolTip = "Caton · \(description)"
         button.setAccessibilityValue(description)

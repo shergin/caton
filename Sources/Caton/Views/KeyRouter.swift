@@ -30,6 +30,7 @@ struct Command: Identifiable {
         Command("select", "Select for bulk", keys: "x") { $0.toggleChecked() },
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
+        Command("peek", "Peek at the latest", keys: "p") { $0.peek() },
         Command("mute", "Mute this repository", keys: "") { $0.muteRepository() },
         Command("zero", "Get me to zero (Feed, or older than a week)", keys: "") { $0.getMeToZero() },
         Command("next-split", "Next split", keys: "⇥") { $0.cycleSplit(by: 1) },
@@ -45,6 +46,7 @@ struct Command: Identifiable {
         Command("group", "Group by repository", keys: "s") { $0.groupByRepository.toggle() },
         Command("refresh", "Refresh", keys: "r") { $0.refresh() },
         Command("keys", "Keyboard shortcuts", keys: "?") { $0.overlay = .help },
+        Command("settings", "Settings…", keys: "⌘,") { $0.openSettings?() },
     ]
 }
 
@@ -69,6 +71,18 @@ enum KeyRouter {
         case .help:
             model.overlay = .none
             return true
+        case .peek:
+            model.overlay = .none
+            switch characters {
+            case "o", "\r": if model.open() { close() }
+            case "e", "d": model.done()
+            default: break
+            }
+            if event.keyCode == 36 || event.keyCode == 76, model.open() { close() }
+            return true
+        case .welcome:
+            if event.keyCode == 53 || event.keyCode == 36 { model.finishWelcome(syncRuleClears: false) }
+            return true
         case .commands:
             if event.keyCode == 53 { model.overlay = .none; return true }
             return false
@@ -85,6 +99,7 @@ enum KeyRouter {
             switch characters.lowercased() {
             case "z": model.undo(); return true
             case "k": model.overlay = .commands; return true
+            case ",": model.openSettings?(); return true
             default: return false
             }
         }
@@ -159,6 +174,7 @@ enum KeyRouter {
         case "x": model.toggleChecked()
         case "z": model.undo()
         case "y": model.copyLink()
+        case "p": model.peek()
         case "/": model.isSearching = true
         case "a": model.unreadOnly.toggle()
         case "s": model.groupByRepository.toggle()

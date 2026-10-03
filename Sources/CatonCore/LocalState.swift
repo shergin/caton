@@ -70,11 +70,31 @@ public struct LocalState: Codable, Hashable, Sendable {
     public var ruleExemptions: [String: Date] = [:]
     public var settings = ClassifierSettings()
     public var queue = ActionQueue()
+    /// The activity of each Needs me thread a banner already covered.
+    public var alerted: [String: Date] = [:]
 
     public static let clearedRetention: TimeInterval = 7 * 24 * 3600
     public static let dismissalRetention: TimeInterval = 30 * 24 * 3600
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case dismissals, readMarks, snoozes, later, cleared, ruleExemptions, settings, queue, alerted
+    }
+
+    /// Reads documents written by earlier versions: a missing key is empty.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dismissals = try container.decodeIfPresent([String: Dismissal].self, forKey: .dismissals) ?? [:]
+        readMarks = try container.decodeIfPresent([String: Date].self, forKey: .readMarks) ?? [:]
+        snoozes = try container.decodeIfPresent([String: Snooze].self, forKey: .snoozes) ?? [:]
+        later = try container.decodeIfPresent([String: Date].self, forKey: .later) ?? [:]
+        cleared = try container.decodeIfPresent([ClearedEntry].self, forKey: .cleared) ?? []
+        ruleExemptions = try container.decodeIfPresent([String: Date].self, forKey: .ruleExemptions) ?? [:]
+        settings = try container.decodeIfPresent(ClassifierSettings.self, forKey: .settings) ?? ClassifierSettings()
+        queue = try container.decodeIfPresent(ActionQueue.self, forKey: .queue) ?? ActionQueue()
+        alerted = try container.decodeIfPresent([String: Date].self, forKey: .alerted) ?? [:]
+    }
 
     /// Drops what no longer matters: old Cleared entries, and dismissals,
     /// marks and exemptions for threads the feed no longer returns.
@@ -85,5 +105,6 @@ public struct LocalState: Codable, Hashable, Sendable {
         }
         readMarks = readMarks.filter { liveThreadIDs.contains($0.key) }
         ruleExemptions = ruleExemptions.filter { liveThreadIDs.contains($0.key) }
+        alerted = alerted.filter { liveThreadIDs.contains($0.key) }
     }
 }
