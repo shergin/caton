@@ -8,6 +8,8 @@ struct PanelView: View {
     var body: some View {
         Group {
             switch model.account {
+            case _ where model.isPractice:
+                InboxView(model: model, close: close)
             case .signedIn:
                 InboxView(model: model, close: close)
                     .environment(\.baton, model.graph)
@@ -54,7 +56,13 @@ struct InboxView: View {
             HStack(spacing: 6) {
                 LogoImage(size: 16)
                 Text("Caton").font(.system(size: 13, weight: .semibold))
-                if model.dryRun {
+                if model.isPractice {
+                    Text("PRACTICE").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.accentColor)
+                    Button("Leave") { model.exitPractice() }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                        .help("Back to your inbox; nothing you did here reached GitHub")
+                } else if model.dryRun {
                     Text("DRY RUN").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
                 }
                 if model.isSyncing { ProgressView().controlSize(.mini) }
@@ -196,6 +204,7 @@ struct InboxView: View {
                                 showsRepository: !model.groupByRepository || acrossRepositories.contains(item.id),
                                 lenses: model.lenses(for: item.id),
                                 spokenState: model.spokenState(for: item),
+                                fallback: model.isPractice ? model.facts(for: item.thread) : nil,
                                 onOpen: {
                                     model.select(item.id)
                                     if model.open(item.id) { close() }

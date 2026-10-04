@@ -126,6 +126,8 @@ final class AppModel {
         }
     }
 
+    /// The practice inbox is showing in place of the account's.
+    private(set) var isPractice = false
     /// The detached window is open but another window has the focus.
     var isWindowInBackground = false
 
@@ -161,6 +163,9 @@ final class AppModel {
     @ObservationIgnored let openURL: @MainActor (URL) -> Void
     @ObservationIgnored private var batonImage: Persistence?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    /// The account's inbox, set aside while practicing.
+    @ObservationIgnored private var practiceStash: (threads: [String: NotificationThread], state: LocalState, section: Section)?
+    @ObservationIgnored private var practiceFacts: [String: SubjectFacts] = [:]
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var recomputeScheduled = false
     /// Whether the session's first poll has landed; until then nothing alerts.
@@ -344,11 +349,11 @@ final class AppModel {
     /// Polls now. Forced, the feed is fetched even when GitHub would answer
     /// that nothing changed; otherwise the poll is a free conditional request.
     func refresh(force: Bool = true) {
-        guard rest != nil else { return }
+        guard rest != nil, !isPractice else { return }
         startPolling(force: force)
     }
 
-    private func startPolling(force: Bool = false) {
+    func startPolling(force: Bool = false) {
         pollTask?.cancel()
         pollTask = Task {
             var force = force
@@ -368,7 +373,7 @@ final class AppModel {
         do {
             let unread = try await rest.pollUnread(force: force)
             let recent = try await rest.pollRecent(since: .now.addingTimeInterval(-Self.recentWindow), force: force)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !isPractice else { return }
             if !merge(unread: unread, recent: recent) {
                 // Nothing new in the feed: subjects still refresh on their
                 // schedule, and snoozes and ages still move.
@@ -439,6 +444,7 @@ final class AppModel {
     /// The feed's threads plus review requests that have no notification.
     var allThreads: [NotificationThread] {
         let feed = Array(threads.values)
+        if isPractice { return feed }
         guard let requests = subjects?.reviewRequestThreads, !requests.isEmpty else { return feed }
         let known = Set(feed.filter { $0.kind == .pullRequest }.map(\.reference))
         return feed + requests.filter { !known.contains($0.reference) }
@@ -456,10 +462,10 @@ final class AppModel {
 
     func recompute() {
         let now = Date.now
-        var next = InboxProjection.project(threads: allThreads, facts: { [subjects] in subjects?.facts(for: $0) }, state: state, now: now)
+        var next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, now: now)
         if !next.autoClears.isEmpty {
             applyRuleClears(next.autoClears, now: now)
-            next = InboxProjection.project(threads: allThreads, facts: { [subjects] in subjects?.facts(for: $0) }, state: state, now: now)
+            next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, now: now)
         }
         for (id, why) in next.wokenSnoozes {
             state.snoozes[id] = nil
@@ -505,6 +511,7 @@ final class AppModel {
     // MARK: Alerts
 
     private func announce(baseline: Bool) {
+        guard !isPractice else { return }
         let decision = AlertPolicy.decide(
             needsMe: snapshot.items(in: .needsMe),
             alerted: state.alerted,
@@ -653,6 +660,8 @@ final class AppModel {
     // MARK: Persistence
 
     func save() {
+        // Practice never touches the account's saved state.
+        guard !isPractice else { return }
         persistence.save { [weak self] in self?.persisted() ?? PersistedState() }
     }
 
@@ -664,9 +673,65 @@ final class AppModel {
 
     // MARK: Row data
 
-    func lenses(for id: String) -> SubjectStore.Lenses { subjects?.lenses(for: id) ?? SubjectStore.Lenses() }
+    func lenses(for id: String) -> SubjectStore.Lenses {
+        isPractice ? SubjectStore.Lenses() : subjects?.lenses(for: id) ?? SubjectStore.Lenses()
+    }
 
-    func facts(for thread: NotificationThread) -> SubjectFacts? { subjects?.facts(for: thread) }
+    func facts(for thread: NotificationThread) -> SubjectFacts? {
+        isPractice ? practiceFacts[thread.id] : subjects?.facts(for: thread)
+    }
+
+    // MARK: Practice
+
+    /// Swaps in a made-up inbox to learn the keys on. Polling pauses, nothing
+    /// is sent to GitHub or saved, and the account's inbox comes back as it
+    /// was on exit.
+    func enterPractice() {
+        guard !isPractice else { return }
+        practiceStash = (threads, state, section)
+        pollTask?.cancel()
+        dispatchTask?.cancel()
+        dispatchTask = nil
+        let entries = PracticeInbox.entries(now: .now)
+        isPractice = true
+        threads = Dictionary(uniqueKeysWithValues: entries.map { ($0.thread.id, $0.thread) })
+        practiceFacts = Dictionary(uniqueKeysWithValues: entries.compactMap { entry in entry.facts.map { (entry.thread.id, $0) } })
+        state = LocalState()
+        undoStack.removeAll()
+        wokenSnoozes.removeAll()
+        repositoryOrder = []
+        expandedBundles = []
+        searchQuery = ""
+        overlay = .none
+        show(.split(.needsMe))
+        recompute()
+        startDispatching()
+        toast("Practice inbox: try e, h, u, x, z and ⌘K")
+    }
+
+    func exitPractice() {
+        guard isPractice, let stash = practiceStash else { return }
+        dispatchTask?.cancel()
+        dispatchTask = nil
+        isPractice = false
+        practiceStash = nil
+        practiceFacts = [:]
+        threads = stash.threads
+        state = stash.state
+        // An action caught in flight when practice began goes again.
+        state.queue.resumeAfterLaunch()
+        undoStack.removeAll()
+        wokenSnoozes.removeAll()
+        repositoryOrder = []
+        expandedBundles = []
+        overlay = .none
+        show(stash.section)
+        recompute()
+        if rest != nil {
+            startPolling()
+            startDispatching()
+        }
+    }
 
     /// "open pull request, checks failing, by dependabot (bot)", for VoiceOver.
     func spokenState(for item: InboxItem) -> String {

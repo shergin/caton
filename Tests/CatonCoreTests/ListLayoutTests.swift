@@ -56,3 +56,18 @@ struct ListLayoutTests {
         #expect(bundle.unreadCount == 1)
     }
 }
+
+struct PracticeInboxTests {
+    @Test func the_practice_inbox_fills_every_split_and_exercises_the_rules() {
+        let entries = PracticeInbox.entries(now: reference)
+        let facts = Dictionary(uniqueKeysWithValues: entries.compactMap { entry in entry.facts.map { (entry.thread.id, $0) } })
+        let snapshot = InboxProjection.project(threads: entries.map(\.thread), facts: { facts[$0.id] }, state: LocalState(), now: reference)
+        #expect(snapshot.count(.needsMe) == 4)
+        #expect(snapshot.count(.team) == 2)
+        #expect(snapshot.count(.following) == 2)
+        #expect(snapshot.count(.feed) == 11)
+        #expect(snapshot.autoClears.map(\.rule) == [.mergedOrClosed])
+        #expect(snapshot.items(in: .feed).contains { $0.classification.routedBy == .drafts })
+        #expect(snapshot.items(in: .feed).filter { $0.classification.routedBy == .botPullRequests }.count == 3)
+    }
+}

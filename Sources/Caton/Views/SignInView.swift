@@ -99,6 +99,15 @@ struct SignInView: View {
             }
             Link("Create a token with the right scopes →", destination: tokenURL)
                 .font(.system(size: 11))
+            Divider().padding(.vertical, 2)
+            Button {
+                model.enterPractice()
+            } label: {
+                Label("Try a practice inbox first", systemImage: "graduationcap")
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 12))
+            .help("Made-up threads to learn the keys on; nothing reaches GitHub")
         }
     }
 }

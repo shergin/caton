@@ -172,6 +172,22 @@ struct AppModelTests {
         #expect(model.tabs.count == 4)
     }
 
+    @Test func practice_sets_the_inbox_aside_and_gives_it_back() {
+        loadThree()
+        model.enterPractice()
+        #expect(model.isPractice)
+        #expect(Split.allCases.map { model.snapshot.count($0) } == [4, 2, 2, 11])
+        model.done()
+        #expect(model.needsMeCount == 3)
+        #expect(model.open())
+        #expect(opened.urls.isEmpty)
+        model.exitPractice()
+        #expect(!model.isPractice)
+        #expect(model.needsMeCount == 3)
+        #expect(model.visibleItems.map(\.id) == ["1", "2", "3"])
+        #expect(model.state.queue.isEmpty)
+    }
+
     @Test func tab_cycles_through_the_splits() {
         loadThree()
         model.cycleSplit(by: 1)

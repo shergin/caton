@@ -20,15 +20,16 @@ extension AppModel {
     }
 
     func wakeDispatcher() {
-        if dispatchTask == nil, rest != nil { startDispatching() }
+        if dispatchTask == nil, rest != nil || isPractice { startDispatching() }
     }
 
     private func execute(_ action: QueuedAction) async {
-        guard let rest else { return }
+        let rest = isPractice ? nil : rest
+        guard rest != nil || isPractice else { return }
         // A review request without a notification has no thread to change.
         let hasThread = !action.threadID.hasPrefix(SubjectStore.reviewRequestPrefix)
         do {
-            if !dryRun, hasThread {
+            if !dryRun, hasThread, let rest {
                 switch action.verb {
                 case .markRead:
                     try await rest.markRead(threadID: action.threadID)

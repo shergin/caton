@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let environment = ProcessInfo.processInfo.environment
         if environment["CATON_SHOW_SETTINGS"] == "1" { settings.show() }
+        if environment["CATON_PRACTICE"] == "1" {
+            model.enterPractice()
+            if let section = environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) { model.show(.split(section)) }
+        }
         if let path = environment["CATON_SNAPSHOT"] {
             Task {
                 try? await Task.sleep(for: .seconds(4))
@@ -49,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "why": model.explain()
                 case "tips": model.overlay = .tips
                 case "zero": model.overlay = .zero
+                case "none": model.overlay = .none
                 default: break
                 }
                 try? await Task.sleep(for: .seconds(2))

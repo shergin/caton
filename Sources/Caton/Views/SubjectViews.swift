@@ -89,6 +89,24 @@ struct IssueSignals: View {
     }
 }
 
+/// A subject's glyph drawn from plain facts rather than a Baton record.
+struct FactsGlyph: View {
+    let facts: SubjectFacts
+    let kind: SubjectKind
+    let isUnread: Bool
+
+    var body: some View {
+        let (symbol, color): (String, Color) = switch (kind, facts.state) {
+        case (.pullRequest, .merged): ("arrow.triangle.merge", .purple)
+        case (.pullRequest, .closed): ("arrow.triangle.pull", .red)
+        case (.pullRequest, .open): facts.isDraft ? ("arrow.triangle.pull", .secondary) : ("arrow.triangle.pull", .green)
+        case (_, .open): ("smallcircle.filled.circle", .green)
+        default: ("checkmark.circle", .purple)
+        }
+        SubjectGlyph(symbol: symbol, color: color, isUnread: isUnread)
+    }
+}
+
 /// The glyph for a thread whose subject is not an issue or pull request, or
 /// is not loaded yet.
 struct KindGlyph: View {

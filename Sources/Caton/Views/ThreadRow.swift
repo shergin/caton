@@ -14,6 +14,8 @@ struct ThreadRow: View {
     let lenses: SubjectStore.Lenses
     /// The subject's state and who opened it, for VoiceOver.
     let spokenState: String
+    /// State to draw from when Baton has no record: the practice inbox.
+    var fallback: SubjectFacts? = nil
     let onOpen: () -> Void
     let onToggleCheck: () -> Void
     let onDone: () -> Void
@@ -118,6 +120,8 @@ struct ThreadRow: View {
             PullRequestIcon(pullRequest: pullRequest, isUnread: item.isUnread)
         } else if let issue = lenses.issueIcon {
             IssueIcon(issue: issue, isUnread: item.isUnread)
+        } else if let fallback {
+            FactsGlyph(facts: fallback, kind: item.thread.kind, isUnread: item.isUnread)
         } else {
             KindGlyph(kind: item.thread.kind, isUnread: item.isUnread)
         }
@@ -128,6 +132,15 @@ struct ThreadRow: View {
             PullRequestSignals(pullRequest: pullRequest, actorKind: item.classification.actorKind)
         } else if let issue = lenses.issueSignals {
             IssueSignals(issue: issue, actorKind: item.classification.actorKind)
+        } else if let fallback {
+            HStack(spacing: 4) {
+                if fallback.state == .open, let checks = fallback.checks {
+                    ChecksGlyph(state: checks == .success ? "SUCCESS" : checks == .failure ? "FAILURE" : "PENDING")
+                }
+                if let author = fallback.author {
+                    Avatar(url: nil, login: author.login, kind: item.classification.actorKind)
+                }
+            }
         }
     }
 }
