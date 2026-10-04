@@ -1,15 +1,20 @@
 #!/bin/sh
-# Builds Caton.app (release) into build/. CATON_GITHUB_CLIENT_ID overrides the
-# OAuth App "Sign in with GitHub" uses (Caton's own by default).
+# Builds Caton.app (release, Apple silicon and Intel) into build/.
+# CATON_GITHUB_CLIENT_ID overrides the OAuth App "Sign in with GitHub" uses
+# (Caton's own by default).
 set -e
 cd "$(dirname "$0")/.."
-swift build -c release
+# SwiftPM's multi-architecture build can't resolve Baton's macro and plugin
+# targets, so each architecture builds on its own and lipo joins them.
+for arch in arm64 x86_64; do
+  swift build -c release --arch "$arch"
+done
 version=$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/Caton/App/AppInfo.swift)
 app=build/Caton.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp .build/release/Caton "$app/Contents/MacOS/Caton"
-cp -R .build/release/Caton_Caton.bundle "$app/Contents/Resources/"
+lipo -create .build/arm64-apple-macosx/release/Caton .build/x86_64-apple-macosx/release/Caton -output "$app/Contents/MacOS/Caton"
+cp -R .build/arm64-apple-macosx/release/Caton_Caton.bundle "$app/Contents/Resources/"
 cp Sources/Caton/Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
