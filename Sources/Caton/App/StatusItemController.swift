@@ -287,7 +287,7 @@ final class ResizeHandle: NSView {
     }
 
     static let thickness: CGFloat = 5
-    static let corner: CGFloat = 14
+    static let corner: CGFloat = 16
 
     private let edge: Edge
     private var startFrame = NSRect.zero
@@ -321,6 +321,22 @@ final class ResizeHandle: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// The bottom-right corner shows a grip: three short diagonal strokes,
+    /// inset to stay inside the panel's rounded corner.
+    override func draw(_ dirtyRect: NSRect) {
+        guard edge == .bottomRight else { return }
+        let path = NSBezierPath()
+        let inset: CGFloat = 4
+        for length in [4.0, 7.5, 11.0] {
+            path.move(to: NSPoint(x: bounds.maxX - inset - length, y: inset))
+            path.line(to: NSPoint(x: bounds.maxX - inset, y: inset + length))
+        }
+        path.lineWidth = 1.2
+        path.lineCapStyle = .round
+        NSColor.tertiaryLabelColor.setStroke()
+        path.stroke()
+    }
 
     override func resetCursorRects() {
         let cursor: NSCursor = switch edge {

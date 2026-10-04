@@ -245,6 +245,8 @@ struct InboxView: View {
             }
             Spacer()
             SettingsMenu(model: model)
+                // Clear of the resize grip in the corner.
+                .padding(.trailing, 10)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
