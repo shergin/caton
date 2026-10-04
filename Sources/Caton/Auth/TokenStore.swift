@@ -28,7 +28,15 @@ enum TokenStore {
 
     private static func read(_ account: String) -> String? {
         #if DEBUG
-        return (try? String(contentsOf: debugFile(account), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if let token = (try? String(contentsOf: debugFile(account), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return token
+        }
+        // A token from before debug builds had their own folder moves over once.
+        let shared = AppPaths.sharedSupport.appending(path: debugFile(account).lastPathComponent)
+        guard let token = (try? String(contentsOf: shared, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { return nil }
+        try? write(token, account)
+        try? FileManager.default.removeItem(at: shared)
+        return token
         #else
         var result: AnyObject?
         let status = SecItemCopyMatching(query(account).merging([kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]) { $1 } as CFDictionary, &result)
@@ -69,14 +77,32 @@ enum TokenStore {
     }
 }
 
+/// Where Caton keeps its files. Debug builds keep their own: a dry run's
+/// local marks must never reach the installed app, which would trust them,
+/// and two processes must not share Baton's image.
 enum AppPaths {
+    #if DEBUG
+    private static let folder = "Caton Debug"
+    private static let cacheFolder = "dev.caton.Caton.debug"
+    #else
+    private static let folder = "Caton"
+    private static let cacheFolder = "dev.caton.Caton"
+    #endif
+
     static var support: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "Caton", directoryHint: .isDirectory)
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: folder, directoryHint: .isDirectory)
     }
 
     static var caches: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "dev.caton.Caton", directoryHint: .isDirectory)
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: cacheFolder, directoryHint: .isDirectory)
     }
+
+    #if DEBUG
+    /// Where debug builds kept their files before they had their own folder.
+    static var sharedSupport: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "Caton", directoryHint: .isDirectory)
+    }
+    #endif
 
     /// An account key as a file name: `github.com/octocat` → `github.com-octocat`.
     static func fileName(_ key: String) -> String {
