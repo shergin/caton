@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
     private var statusItem: StatusItemController?
     private var hotKey: HotKey?
+    private var needsMeHotKey: HotKey?
     private lazy var settings = SettingsWindowController(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -23,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.model.reveal(threadID)
         }
         registerHotKey()
+        registerNeedsMeHotKey()
+        applyAppearance()
         if case .signedOut = model.account {
             statusItem.showPanel()
         }
@@ -75,6 +78,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             preferences.hotKeyStatus = "\(combination.display) is taken by another app. Pick another."
         }
+    }
+
+    /// The second shortcut: the panel, on Needs me, at the top item.
+    private func registerNeedsMeHotKey() {
+        let preferences = model.preferences
+        let combination = withObservationTracking { preferences.needsMeHotKey } onChange: {
+            Task { @MainActor [weak self] in self?.registerNeedsMeHotKey() }
+        }
+        needsMeHotKey = nil
+        preferences.needsMeHotKeyStatus = nil
+        guard let combination else { return }
+        if combination == preferences.hotKey {
+            preferences.needsMeHotKeyStatus = "\(combination.display) already opens the panel."
+            return
+        }
+        needsMeHotKey = HotKey(keyCode: combination.keyCode, modifiers: combination.modifierFlags) { [weak self] in
+            guard let self else { return }
+            if !self.model.isPanelVisible { self.statusItem?.showPanel() }
+            self.model.show(.split(.needsMe))
+            self.model.selectFirst()
+        }
+        if needsMeHotKey == nil {
+            preferences.needsMeHotKeyStatus = "\(combination.display) is taken by another app. Pick another."
+        }
+    }
+
+    /// Follows the appearance setting; "Match the system" leaves it to macOS.
+    private func applyAppearance() {
+        let preferences = model.preferences
+        NSApp.appearance = withObservationTracking { preferences.appearance } onChange: {
+            Task { @MainActor [weak self] in self?.applyAppearance() }
+        }.nsAppearance
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

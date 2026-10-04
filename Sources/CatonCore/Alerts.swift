@@ -42,7 +42,7 @@ public struct AlertDecision: Equatable, Sendable {
 /// arrives while silent is marked seen rather than held, so quiet hours do
 /// not end in a burst.
 public enum AlertPolicy {
-    public static let cap = 3
+    public static let defaultCap = 3
 
     public static func decide(
         needsMe: [InboxItem],
@@ -51,6 +51,7 @@ public enum AlertPolicy {
         quietHours: QuietHours,
         isEnabled: Bool,
         isBaseline: Bool,
+        cap: Int = defaultCap,
         now: Date
     ) -> AlertDecision {
         var decision = AlertDecision()
@@ -63,5 +64,35 @@ public enum AlertPolicy {
         decision.banners = Array(unread.prefix(cap))
         decision.overflow = max(0, unread.count - cap)
         return decision
+    }
+}
+
+/// The optional morning digest: one banner when the working day starts,
+/// "4 need you, 37 cleared overnight".
+public enum DigestPolicy {
+    /// How long after the day's start the digest may still show; opening the
+    /// Mac at noon does not get a morning digest.
+    public static let window: TimeInterval = 4 * 3600
+
+    /// Whether the digest is due: on a working day, within the window after
+    /// the day starts, once.
+    public static func isDue(lastShown: Date?, quietHours: QuietHours, now: Date, calendar: Calendar = .current) -> Bool {
+        let start = dayStart(of: now, quietHours: quietHours, calendar: calendar)
+        guard now >= start, now < start.addingTimeInterval(window) else { return false }
+        if quietHours.weekendsQuiet, calendar.isDateInWeekend(now) { return false }
+        if let lastShown, lastShown >= start { return false }
+        return true
+    }
+
+    /// When the working day of `date` starts: quiet hours' end, else 9:00.
+    public static func dayStart(of date: Date, quietHours: QuietHours, calendar: Calendar = .current) -> Date {
+        let minutes = quietHours.isEnabled ? quietHours.start : 9 * 60
+        return calendar.startOfDay(for: date).addingTimeInterval(TimeInterval(minutes * 60))
+    }
+
+    public static func message(needsMe: Int, clearedOvernight: Int) -> String? {
+        guard needsMe > 0 || clearedOvernight > 0 else { return nil }
+        let waiting = needsMe == 0 ? "Nothing needs you" : "\(needsMe) need\(needsMe == 1 ? "s" : "") you"
+        return clearedOvernight == 0 ? waiting : "\(waiting), \(clearedOvernight) cleared overnight"
     }
 }

@@ -28,6 +28,15 @@ final class Preferences {
     var hotKey: HotKeyCombination { didSet { defaults.set(try? JSONEncoder().encode(hotKey), forKey: "hotKey") } }
     /// What the shortcut registered as, or why it could not be.
     var hotKeyStatus: String?
+    /// A second shortcut that opens straight into Needs me; none by default.
+    var needsMeHotKey: HotKeyCombination? { didSet { defaults.set(try? JSONEncoder().encode(needsMeHotKey), forKey: "needsMeHotKey") } }
+    var needsMeHotKeyStatus: String?
+    var appearance: Appearance { didSet { defaults.set(appearance.rawValue, forKey: "appearance") } }
+    /// The most banners one poll shows before summing up the rest.
+    var alertCap: Int { didSet { defaults.set(alertCap, forKey: "alertCap") } }
+    /// A morning banner summing up what waits and what rules cleared overnight.
+    var digestEnabled: Bool { didSet { defaults.set(digestEnabled, forKey: "digestEnabled") } }
+    var lastDigest: Date? { didSet { defaults.set(lastDigest, forKey: "lastDigest") } }
     /// Accounts that have seen the first-sync summary.
     var welcomedAccounts: Set<String> { didSet { defaults.set(Array(welcomedAccounts), forKey: "welcomedAccounts") } }
     /// What "Sign in with GitHub" asks for.
@@ -46,6 +55,11 @@ final class Preferences {
         let height = defaults.double(forKey: "panelHeight")
         panelSize = width > 0 && height > 0 ? NSSize(width: width, height: height) : NotificationPanel.defaultSize
         hotKey = defaults.data(forKey: "hotKey").flatMap { try? JSONDecoder().decode(HotKeyCombination.self, from: $0) } ?? .standard
+        needsMeHotKey = defaults.data(forKey: "needsMeHotKey").flatMap { try? JSONDecoder().decode(HotKeyCombination?.self, from: $0) } ?? nil
+        appearance = defaults.string(forKey: "appearance").flatMap(Appearance.init(rawValue:)) ?? .system
+        alertCap = (defaults.object(forKey: "alertCap") as? Int).map { min(max($0, 1), 10) } ?? AlertPolicy.defaultCap
+        digestEnabled = defaults.bool(forKey: "digestEnabled")
+        lastDigest = defaults.object(forKey: "lastDigest") as? Date
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
         tipsShown = defaults.bool(forKey: "tipsShown")
         access = defaults.string(forKey: "access").flatMap(DeviceFlow.Access.init(rawValue:)) ?? .full
@@ -64,6 +78,29 @@ final class Preferences {
             } catch {
                 launchAtLoginError = "macOS refused: allow Caton in System Settings › General › Login Items."
             }
+        }
+    }
+}
+
+/// The panel's light or dark look.
+enum Appearance: String, CaseIterable, Sendable {
+    case system
+    case light
+    case dark
+
+    var title: String {
+        switch self {
+        case .system: "Match the system"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
         }
     }
 }

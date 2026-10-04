@@ -241,6 +241,7 @@ extension AppModel {
         let items = targets(id)
         guard !items.isEmpty else { return }
         let batch = state.queue.enqueue(verb, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
+        state.count(byYou: items.count, now: .now)
         undoStack.append(.queued(batch))
         checked.removeAll()
         toast(items.count == 1 ? "\(verbTitle) \(items[0].thread.reference) · z to undo" : "\(verbTitle) \(items.count) threads · z to undo")
@@ -303,39 +304,87 @@ extension AppModel {
 
     // MARK: Rules
 
-    func isEnabled(_ rule: Rule) -> Bool { state.settings.enabledRules.contains(rule) }
+    func isEnabled(_ rule: Rule) -> Bool {
+        _ = settingsVersion
+        return state.settings.enabledRules.contains(rule)
+    }
 
     func setEnabled(_ rule: Rule, _ enabled: Bool) {
         if enabled { state.settings.enabledRules.insert(rule) } else { state.settings.enabledRules.remove(rule) }
+        settingsChanged()
+    }
+
+    /// Reclassifies after a settings change and lets settings views redraw.
+    private func settingsChanged() {
+        settingsVersion += 1
         recompute()
     }
 
-    var mutedRepositories: [String] { state.settings.mutedRepositories.sorted() }
+    var mutedRepositories: [String] {
+        _ = settingsVersion
+        return state.settings.mutedRepositories.sorted()
+    }
 
-    var botLogins: [String] { state.settings.botLogins.sorted() }
+    /// The editable lists of machine accounts.
+    enum LoginList: CaseIterable {
+        case bots
+        case aiReviewers
+        case agents
 
-    func addBot(_ login: String) {
+        var keyPath: WritableKeyPath<ClassifierSettings, Set<String>> {
+            switch self {
+            case .bots: \.botLogins
+            case .aiReviewers: \.aiReviewerLogins
+            case .agents: \.agentLogins
+            }
+        }
+    }
+
+    func logins(_ list: LoginList) -> [String] {
+        _ = settingsVersion
+        return state.settings[keyPath: list.keyPath].sorted()
+    }
+
+    func addLogin(_ login: String, to list: LoginList) {
         let login = login.trimmingCharacters(in: .whitespaces).lowercased()
         guard !login.isEmpty else { return }
-        state.settings.botLogins.insert(login)
-        recompute()
+        state.settings[keyPath: list.keyPath].insert(login)
+        settingsChanged()
     }
 
-    func removeBot(_ login: String) {
-        state.settings.botLogins.remove(login)
-        recompute()
+    func removeLogin(_ login: String, from list: LoginList) {
+        state.settings[keyPath: list.keyPath].remove(login)
+        settingsChanged()
+    }
+
+    /// How many days read threads outside Needs me stay.
+    var readWindowDays: Int {
+        get {
+            _ = settingsVersion
+            return state.settings.readWindowDays
+        }
+        set {
+            state.settings.readWindowDays = min(max(newValue, 1), 30)
+            settingsChanged()
+        }
+    }
+
+    /// The last seven days' clears, for Settings' About tab.
+    var weekTally: Tally {
+        _ = snapshot
+        return state.week(now: .now)
     }
 
     func unmute(_ repository: String) {
         state.settings.mutedRepositories.remove(repository)
-        recompute()
+        settingsChanged()
     }
 
     func muteRepository(_ id: String? = nil) {
         guard let item = targets(id).first else { return }
         state.settings.mutedRepositories.insert(item.thread.repository.fullName.lowercased())
         toast("Muted \(item.thread.repository.fullName)")
-        recompute()
+        settingsChanged()
     }
 
     /// One way to clear in bulk, with what it would clear.
@@ -372,6 +421,7 @@ extension AppModel {
         guard !items.isEmpty else { return }
         let batch = state.queue.enqueue(.done, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
         state.cleared += items.map { ClearedEntry(batch: batch, thread: $0.thread, rule: nil, at: .now) }
+        state.count(byYou: items.count, now: .now)
         undoStack.append(.queued(batch))
         checked.removeAll()
         toast("Cleared \(items.count) · z to undo")
@@ -407,6 +457,9 @@ extension AppModel {
             return
         }
         state.cleared.removeAll { $0.batch == batch }
+        let dismissals = removed.filter(\.verb.dismisses)
+        let byRules = dismissals.filter { $0.rule != nil }.count
+        state.count(byRules: -byRules, byYou: -(dismissals.count - byRules), now: .now)
         for action in removed where action.rule != nil {
             state.ruleExemptions[action.threadID] = action.activity
         }

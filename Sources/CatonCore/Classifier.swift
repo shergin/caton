@@ -135,23 +135,27 @@ public struct ClassifierSettings: Codable, Hashable, Sendable {
     public var agentLogins: Set<String>
     /// Ordinary accounts the user knows are bots, lowercased.
     public var botLogins: Set<String>
+    /// How many days a read thread outside Needs me stays in the inbox.
+    public var readWindowDays: Int
 
     public init(
         enabledRules: Set<Rule> = Set(Rule.allCases),
         mutedRepositories: Set<String> = [],
         aiReviewerLogins: Set<String> = ClassifierSettings.defaultAIReviewers,
         agentLogins: Set<String> = ClassifierSettings.defaultAgents,
-        botLogins: Set<String> = []
+        botLogins: Set<String> = [],
+        readWindowDays: Int = 7
     ) {
         self.enabledRules = enabledRules
         self.mutedRepositories = mutedRepositories
         self.aiReviewerLogins = aiReviewerLogins
         self.agentLogins = agentLogins
         self.botLogins = botLogins
+        self.readWindowDays = readWindowDays
     }
 
     private enum CodingKeys: String, CodingKey {
-        case enabledRules, mutedRepositories, aiReviewerLogins, agentLogins, botLogins
+        case enabledRules, mutedRepositories, aiReviewerLogins, agentLogins, botLogins, readWindowDays
     }
 
     /// Reads settings saved by earlier versions: a missing key takes its default.
@@ -162,6 +166,7 @@ public struct ClassifierSettings: Codable, Hashable, Sendable {
         aiReviewerLogins = try container.decodeIfPresent(Set<String>.self, forKey: .aiReviewerLogins) ?? Self.defaultAIReviewers
         agentLogins = try container.decodeIfPresent(Set<String>.self, forKey: .agentLogins) ?? Self.defaultAgents
         botLogins = try container.decodeIfPresent(Set<String>.self, forKey: .botLogins) ?? []
+        readWindowDays = try container.decodeIfPresent(Int.self, forKey: .readWindowDays) ?? 7
     }
 
     public static let defaultAIReviewers: Set<String> = [

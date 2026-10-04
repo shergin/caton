@@ -73,3 +73,48 @@ struct AlertTests {
         #expect(decision.alerted["1"] == reference)
     }
 }
+
+struct DigestTests {
+    let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
+    func date(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        // October 2026: the 5th is a Monday, the 3rd a Saturday.
+        calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+    }
+
+    @Test func the_digest_is_due_once_in_the_morning_of_a_working_day() {
+        let hours = QuietHours()
+        #expect(DigestPolicy.isDue(lastShown: nil, quietHours: hours, now: date(5, 9, 30), calendar: calendar))
+        #expect(!DigestPolicy.isDue(lastShown: date(5, 9, 1), quietHours: hours, now: date(5, 10), calendar: calendar))
+        #expect(DigestPolicy.isDue(lastShown: date(5, 9, 1), quietHours: hours, now: date(6, 9, 5), calendar: calendar))
+    }
+
+    @Test func the_digest_skips_nights_late_mornings_and_weekends() {
+        let hours = QuietHours()
+        #expect(!DigestPolicy.isDue(lastShown: nil, quietHours: hours, now: date(5, 7), calendar: calendar))
+        #expect(!DigestPolicy.isDue(lastShown: nil, quietHours: hours, now: date(5, 14), calendar: calendar))
+        #expect(!DigestPolicy.isDue(lastShown: nil, quietHours: hours, now: date(3, 9, 30), calendar: calendar))
+    }
+
+    @Test func the_digest_says_what_waits_and_what_rules_cleared() {
+        #expect(DigestPolicy.message(needsMe: 4, clearedOvernight: 37) == "4 need you, 37 cleared overnight")
+        #expect(DigestPolicy.message(needsMe: 1, clearedOvernight: 0) == "1 needs you")
+        #expect(DigestPolicy.message(needsMe: 0, clearedOvernight: 0) == nil)
+    }
+}
+
+struct TallyTests {
+    @Test func the_week_sums_seven_days_of_clears() {
+        var state = LocalState()
+        state.count(byRules: 5, now: reference)
+        state.count(byYou: 2, now: reference)
+        state.count(byRules: 100, now: reference.addingTimeInterval(-8 * 24 * 3600))
+        let week = state.week(now: reference)
+        #expect(week.byRules == 5)
+        #expect(week.byYou == 2)
+    }
+}

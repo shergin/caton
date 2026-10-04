@@ -87,6 +87,9 @@ final class AppModel {
     private(set) var signInError: String?
     private(set) var deviceSignIn: DeviceSignIn = .idle
     private(set) var isSyncing = false
+    /// Bumped when classification settings change, so views reading them
+    /// (they live in unobserved `state`) redraw.
+    var settingsVersion = 0
     /// When GitHub's rate limit lets requests through again.
     private(set) var cooldownUntil: Date?
     var cleared: [ClearedEntry] = []
@@ -371,6 +374,7 @@ final class AppModel {
                 prepareWelcome()
             }
             subjects?.searchReviewRequests()
+            offerDigest()
             errorMessage = nil
             if let cooldownUntil, cooldownUntil <= .now { self.cooldownUntil = nil }
         } catch GitHubError.unauthorized {
@@ -472,6 +476,7 @@ final class AppModel {
     }
 
     private func applyRuleClears(_ clears: [AutoClear], now: Date) {
+        state.count(byRules: clears.count, now: now)
         let byRule = Dictionary(grouping: clears, by: \.rule)
         for (rule, clears) in byRule {
             if preferences.syncRuleClears {
@@ -498,10 +503,22 @@ final class AppModel {
             quietHours: preferences.quietHours,
             isEnabled: preferences.alertsEnabled,
             isBaseline: baseline,
+            cap: preferences.alertCap,
             now: .now
         )
         state.alerted.merge(decision.alerted) { _, new in new }
         banners.show(decision)
+    }
+
+    /// The morning digest, once on a working day, if the user turned it on.
+    private func offerDigest(now: Date = .now) {
+        guard preferences.digestEnabled, DigestPolicy.isDue(lastShown: preferences.lastDigest, quietHours: preferences.quietHours, now: now) else { return }
+        // Overnight: since yesterday's digest, at most a day back.
+        let since = preferences.lastDigest.map { max($0, now.addingTimeInterval(-24 * 3600)) } ?? now.addingTimeInterval(-16 * 3600)
+        preferences.lastDigest = now
+        let overnight = state.cleared.filter { $0.rule != nil && $0.at >= since }.count
+        guard let message = DigestPolicy.message(needsMe: snapshot.count(.needsMe), clearedOvernight: overnight) else { return }
+        banners.showDigest(message)
     }
 
     /// Shows the panel's welcome summary once per account, after its first sync.

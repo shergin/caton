@@ -83,9 +83,6 @@ public struct InboxSnapshot: Equatable, Sendable {
 /// Computes the inbox from the feed, the subjects' facts and local state.
 /// Pure, so every rule about what shows where is testable without a network.
 public enum InboxProjection {
-    /// How long a read thread outside Needs me stays in the inbox.
-    public static let readRetention: TimeInterval = 7 * 24 * 3600
-
     public static func project(
         threads: some Sequence<NotificationThread>,
         facts: (NotificationThread) -> SubjectFacts?,
@@ -137,7 +134,8 @@ public enum InboxProjection {
                 continue
             }
 
-            if !isUnread, classification.split != .needsMe, now.timeIntervalSince(thread.updatedAt) > readRetention {
+            // A read thread outside Needs me stays for the read window.
+            if !isUnread, classification.split != .needsMe, now.timeIntervalSince(thread.updatedAt) > TimeInterval(state.settings.readWindowDays) * 24 * 3600 {
                 continue
             }
 

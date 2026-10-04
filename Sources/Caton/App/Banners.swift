@@ -42,6 +42,16 @@ final class Banners: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// The morning digest; clicking it opens the panel on Needs me.
+    func showDigest(_ message: String) {
+        guard let center, authorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Good morning"
+        content.body = message
+        content.threadIdentifier = "digest"
+        center.add(UNNotificationRequest(identifier: "digest", content: content, trigger: nil))
+    }
+
     /// Takes back banners for threads that no longer need the user.
     func withdraw(_ threadIDs: [String]) {
         center?.removeDeliveredNotifications(withIdentifiers: threadIDs)
