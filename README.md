@@ -21,9 +21,11 @@ The product thinking is in [PRD.md](PRD.md).
 - **Caton** (the app): an AppKit status item and non-activating panel hosting
   SwiftUI, with subject state through [Baton](https://github.com/shergin/baton). Each pull request
   and issue row reads its state through a fragment beside the view; the
-  first fetch of a subject goes through `repository(owner:name:)`, later
-  refreshes through `nodes(ids:)` in batches into the same records, and a
-  relaunch classifies the inbox from Baton's on-disk image before the
+  operations the model owns and the facts the classifier reads are in
+  [`Subjects.graphql`](Sources/Caton/Graph/Subjects.graphql) beside the
+  store. The first fetch of a subject goes through `repository(owner:name:)`,
+  later refreshes through `nodes(ids:)` in batches into the same records,
+  and a relaunch classifies the inbox from Baton's on-disk image before the
   network answers.
 - **My PRs** (`g p`) is the part to read for Baton: a screen with no REST
   behind it. Its query, a paged connection, its rows and the fragment that
@@ -41,7 +43,7 @@ beside it (`Package.swift` names `../baton`):
 ```sh
 git clone https://github.com/shergin/baton.git
 git clone https://github.com/shergin/caton.git
-baton/scripts/build-compiler.sh   # once: Baton's GraphQL compiler, needs Rust
+baton/scripts/build-compiler.sh   # Baton's GraphQL compiler, needs Rust; again after pulling Baton
 cd caton
 ```
 

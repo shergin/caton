@@ -28,8 +28,13 @@ reach that file (`persisted()` saves the inbox set aside).
 - `Sources/Caton`: the app. `Graph/` holds Baton documents and the subject
   store, `Model/AppModel.swift` owns all state and every change to GitHub,
   `Views/` and `App/` are the panel and the AppKit shell.
-- GraphQL lives beside the code that reads it (`@Fragment`, `@Query`); the
-  schema is `schema.docs.graphql` at the root with `baton.json`.
+- GraphQL lives beside the code that reads it: `@Fragment` and `@Query` on
+  views, `.graphql` files beside model code (`Graph/Subjects.graphql`). A
+  model that needs a view's query asks for the same operation value and
+  shares its handle. The schema is `schema.docs.graphql` at the root with
+  `baton.json`.
+- After pulling Baton, rebuild its compiler (`../baton/scripts/build-compiler.sh`):
+  generated code from an old compiler does not match a new runtime.
 
 ## Conventions
 
