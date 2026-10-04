@@ -586,27 +586,37 @@ This is a demo, so these are **validation signals**, measured locally or by hand
 
 ## 17. Build status (2026-10-03)
 
-Built on Baton 0.6.0 in `Sources/`; `swift test` runs 70 tests (CatonCore and the app model).
+Built on Baton 0.6.0 in `Sources/`; `swift test` runs 106 tests (CatonCore and the app model).
 
 | Area | Status |
 |---|---|
-| Menu bar count (or dot), configurable global shortcut with fallback, non-activating panel, outside-click and Esc dismissal | Built |
-| Sign-in: device flow through Caton's OAuth App (`Ov23liz9s5AlvZVZWZ2k`), GitHub CLI token, classic PAT | Built; the OAuth App accepts device-code requests, a full sign-in not yet run |
-| REST feed: conditional polling at 50 per page, read-not-done window, rate governor shared with GraphQL | Built |
+| Menu bar count (or icon only), tooltip and VoiceOver with every split's count, right-click Refresh / Settings / Check for Updates / Quit | Built |
+| Global shortcut with fallback; second shortcut into Needs me (MB-07) | Built |
+| Panel drawn as a macOS 26 menu (glass, rounded window), resizable; detachable into an ordinary window (PA-08) | Built |
+| Sign-in: device flow through Caton's OAuth App (`Ov23liz9s5AlvZVZWZ2k`), Full or Lite scopes, GitHub CLI token, classic PAT | Built; the OAuth App accepts device-code requests, a full sign-in not yet run |
+| Several accounts, one shown at a time; GitHub Enterprise Server and GHE.com hosts (AU-07) | Built; Enterprise endpoints tested against stubs only, no Enterprise account used |
+| REST feed: conditional polling at 50 per page, read-not-done window (configurable), rate governor shared with GraphQL | Built |
+| Status strip by priority: error, rate-limit cooldown, warning, update (PA-05) | Built |
 | Subject state through Baton, image hydration on relaunch | Built; verified on a 9-thread account |
-| Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds (Apps, machine users named like bots, a user list) | Built; heuristic not yet compared with github.com/pulls (S3) |
-| Rules R1–R4, Cleared log with restore, rule exemptions; GitHub sync opt-in from the welcome summary or Settings | Built |
-| Verbs: open, done, unsubscribe, ignore, mark read, snooze, later, mute repo, bulk, undo, get me to zero, peek | Built |
+| Four splits, direct-vs-team via `reviewRequests` and `viewerLatestReviewRequest`, actor kinds (Apps, machine users named like bots, editable bot / AI reviewer / agent lists) | Built; heuristic not yet compared with github.com/pulls (S3) |
+| "Why is this here?" from the classifier's own reasoning | Built |
+| Feed bundles per bot and per busy repository (PA-03) | Built |
+| Rules R1–R4, Cleared log with restore and links, rule exemptions; GitHub sync opt-in from the welcome summary or Settings | Built |
+| Verbs: open, done, unsubscribe, ignore, mark read, snooze (with follow-up mode), later, mute repo, bulk, undo, peek, copy link | Built |
+| Specific resurfacing notes: re-requested, checks failed, changes requested, approved, new comment by @x, asked again, snooze ended, no reply yet | Built |
+| Get me to zero with a count preview per option (AC-09) | Built |
 | Paced persisted queue, grace window, drain on quit | Built |
-| Search with qualifiers, unread only, grouping with stable repository order | Built |
-| Cmd+K command menu, `?` keymap, footer hints, hover actions | Built |
+| Search with qualifiers, unread only, grouping with stable repository order; saved searches as splits (SE-04) | Built |
+| Cmd+K command menu, `?` keymap, footer hints, hover actions, hover checkbox, three-key tip (OB-03), practice inbox (OB-05) | Built |
 | Orphan review-request search (8.3) | Built; the account used had no review requests, so only its cost (1 point) is verified |
-| Banners and quiet hours (9.6) | Built; needs the bundled app; not yet seen on screen |
-| Settings window (General, Rules, Alerts, Account), welcome summary (OB-02) | Built |
-| Practice inbox, saved searches, digest, second hotkey, detachable panel, Sparkle, multiple accounts | Not yet (P2) |
+| Banners, quiet hours, per-poll cap, morning digest (AL-04) | Built; needs the bundled app; not yet seen on screen |
+| Settings: General, Rules, Alerts, Account, Shortcuts, About (with local-only weekly stats) | Built |
+| Accessibility: row labels with state, author and age, row actions, Reduce Motion | Built; not yet audited with VoiceOver end to end |
+| Updates | Checked against GitHub Releases; installing in place (Sparkle, UP-02) waits for signed, notarized releases (UP-01), which need a Developer ID |
+| Multiple accounts at once (polling every account, a merged count) | Not built: one account shows at a time |
 | Spikes S1, S2 | Not run: they mutate notifications and need a sandbox account |
 | Spike S3 | Open: needs an account with direct and team review requests |
 | Spike S4 | Answered: `user-review-requested:@me` costs 1 point |
 | Spike S5 | Answered by the build: a thread's reason stayed `mention` years after the mention, while the latest activity was a bot closing the issue. Facts now include the latest commenter, and an old mention on a subject a bot closed is no longer Needs me |
 
-Improvements Baton needs, found while building, are in `../baton/notes/reviews/2026-10-03-caton-dogfooding.md`.
+Improvements Baton needs, found while building, are in Baton's notes.

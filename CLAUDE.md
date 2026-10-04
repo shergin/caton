@@ -15,6 +15,11 @@ Always run against a real account with `CATON_DRY_RUN=1` unless the user
 asks otherwise: without it, verbs and rules change the account's
 notifications on GitHub. Stop the app with `pkill -x Caton`.
 
+Debug runs write to the user's real local state (`~/Library/Application
+Support/Caton/state-<host>-<login>.json`). For layout checks that don't need
+the account, use `CATON_PRACTICE=1` with `CATON_SNAPSHOT`; practice must never
+reach that file (`persisted()` saves the inbox set aside).
+
 ## Layout
 
 - `Sources/CatonCore`: Foundation only. The REST client, classifier, action

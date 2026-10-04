@@ -46,19 +46,38 @@ CATON_DRY_RUN=1 ./scripts/run.sh
 `CATON_DRY_RUN=1` keeps every change local: nothing is marked read, done or
 unsubscribed on GitHub. `CATON_GITHUB_TOKEN=$(gh auth token)` signs in without
 the sign-in screen. Debug builds also take `CATON_OPEN_PANEL=1`,
-`CATON_SECTION=0…3`, `CATON_SNAPSHOT=/path.png` (renders the panel to a file)
-and `CATON_DUMP=1` (prints the classified inbox to stderr).
+`CATON_SECTION=0…3`, `CATON_PRACTICE=1` (opens the practice inbox),
+`CATON_OVERLAY=peek|help|commands|snooze|why|tips|zero|none`,
+`CATON_SNAPSHOT=/path.png` (renders the panel to a file) and `CATON_DUMP=1`
+(prints the classified inbox to stderr).
+
+Not signed in yet, or new to the keys? "Try a practice inbox first" on the
+sign-in screen (or "Practice inbox" in `⌘K`) opens made-up threads that fill
+every split; nothing there reaches GitHub or is saved.
 
 `./scripts/icons.sh` renders the menu bar images, the in-app logo and the app
 icon into `Sources/Caton/Resources` from `logo.png` and `icon-*.png` at the
 root; run it after changing those.
 
-`./scripts/bundle.sh` builds `build/Caton.app`. "Sign in with GitHub" uses
-the device flow of Caton's OAuth App (client id `Ov23liz9s5AlvZVZWZ2k`; no
-secret is involved); `CATON_GITHUB_CLIENT_ID` points it at another OAuth App
-with device flow enabled. The GitHub CLI's login and a classic token with the
-`notifications` and `repo` scopes also work. GitHub's notifications API does
-not accept fine-grained tokens or GitHub App tokens.
+`./scripts/bundle.sh` builds `build/Caton.app`, versioned from
+`Sources/Caton/App/AppInfo.swift`. The app checks GitHub Releases for a newer
+version once a day and from "Check for Updates…".
+
+"Sign in with GitHub" uses the device flow of Caton's OAuth App (client id
+`Ov23liz9s5AlvZVZWZ2k`; no secret is involved); `CATON_GITHUB_CLIENT_ID`
+points it at another OAuth App with device flow enabled. It asks for
+`notifications repo`, or `notifications public_repo` in Lite mode (private
+pull requests then show no state). The GitHub CLI's login and a classic token
+with those scopes also work. GitHub's notifications API does not accept
+fine-grained tokens or GitHub App tokens.
+
+## Accounts
+
+Several accounts can be signed in, on github.com, a GitHub Enterprise Cloud
+tenant (`acme.ghe.com`) or a GitHub Enterprise Server host (sign in to those
+with a token or the GitHub CLI). One shows at a time, each with its own
+rules, snoozes, saved searches and Cleared log; switch from the gear menu,
+Settings or `⌘K`.
 
 Requires macOS 26 and Swift 6.2, as Baton does.
 
@@ -70,21 +89,35 @@ a throwaway state file and user defaults).
 
 `j`/`k` move, `⏎`/`o` open, `e`/`d` done, `h` snooze, `u` unsubscribe, `b`
 later, `m` mark read, `p` peek, `x` select, `z` undo, `y` copy link, `/`
-search, `⇥` next split, `1`–`4` splits, `⌘K` commands, `⌘,` settings, `?`
-all keys. The global shortcut is `⌘'` by default (`⌥⌘'` when another app
-holds it) and can be changed in Settings.
+search, `⇥` next split, `1`–`4` splits, `5`–`9` saved searches, `→`/`←` open
+and close a Feed bundle, `⌘K` commands, `⌘,` settings, `?` all keys (also in
+Settings › Shortcuts). The global shortcut is `⌘'` by default (`⌥⌘'` when
+another app holds it); a second one, off by default, opens straight into
+Needs me.
+
+In the snooze picker, `n` switches to a follow-up: the thread comes back on
+any new activity, and at the chosen time only if nothing happened ("back: no
+reply yet"). `⌘K` › "Why is this here?" explains a thread's split, and "Get
+me to zero…" previews each bulk clear with its count.
+
+Feed bundles what one bot sent and what a busy repository sent into single
+rows; `e` on a bundle clears all of it. The header's window button (or `⌘K`)
+moves the inbox into an ordinary window that stays open.
 
 Search takes words and GitHub-style qualifiers, each negatable with `-`:
 `repo:`, `org:`, `author:`, `reason:` (`review`, `mention`, `team`, …), `is:`
 (`pr`, `issue`, `draft`, `unread`, `open`, `closed`, `merged`, `bot`) and
-`ci:` (`failing`, `passing`, `pending`).
+`ci:` (`failing`, `passing`, `pending`). "Save as split" keeps a search as a
+tab after Feed.
 
 ## Alerts
 
 The bundled app shows a banner when something new needs you: Needs me only,
-at most three per poll and a summary for the rest, never while the panel is
-open, and silent outside working hours (9:00–19:00 on weekdays by default).
-The first poll after launch announces nothing; what is already there is seen.
+at most three per poll (adjustable) and a summary for the rest, never while
+the panel is open, and silent outside working hours (9:00–19:00 on weekdays by
+default). The first poll after launch announces nothing; what is already there
+is seen. An optional morning digest sums up what waits and what rules cleared
+overnight.
 
 ## Rules
 
