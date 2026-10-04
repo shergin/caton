@@ -93,3 +93,7 @@ each can be restored: merged or closed subjects outside Needs me are cleared,
 drafts that do not request you go to Feed, bot pull requests go to Feed, and
 muted repositories are cleared. Rules never touch Needs me. Until you turn on
 "Mark rule-cleared threads done on GitHub", rule clears stay on this Mac.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
