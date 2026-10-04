@@ -487,8 +487,7 @@ final class AppModel {
         let governor = RateGovernor()
         let file = viewer.host.isDotCom ? "subjects-\(viewer.login).sqlite" : "subjects-\(AppPaths.fileName(viewer.key)).sqlite"
         let image = Persistence(url: AppPaths.caches.appending(path: file), version: "3")
-        let environment = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image))
-        environment.releaseBufferSize = 50
+        let environment = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image), releaseBufferSize: 50)
         let subjects = SubjectStore(environment: environment, viewerID: viewer.nodeID, fetchedActivity: fetchedActivity)
         subjects.onChange = { [weak self] in self?.scheduleRecompute() }
         rest = GitHubREST(token: token, host: viewer.host, governor: governor)

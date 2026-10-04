@@ -20,10 +20,10 @@ final class SubjectStore {
             }
         }
 
-        func refetch() async {
+        func refetch() async throws {
             switch self {
-            case .pullRequest(let handle): await handle.refetch()
-            case .issue(let handle): await handle.refetch()
+            case .pullRequest(let handle): try await handle.refetch()
+            case .issue(let handle): try await handle.refetch()
             }
         }
 
@@ -108,8 +108,9 @@ final class SubjectStore {
         guard age > (force ? 60 : Self.reviewRequestInterval) else { return }
         lastReviewRequestSearch = now
         Task {
-            async let requests: Void = reviewRequests.refetch()
-            async let mine: Void = myPullRequests.refetch()
+            // A failed search keeps what the store had; the next one tries again.
+            async let requests: Void? = try? reviewRequests.refetch()
+            async let mine: Void? = try? myPullRequests.refetch()
             _ = await (requests, mine)
             indexReviewRequests()
             onChange?()
@@ -258,10 +259,12 @@ final class SubjectStore {
             }
             inFlight += 1
             Task {
-                await handle.refetch()
+                // A refetch that fails throws, even when earlier data keeps the
+                // handle ready: only a fetch that landed covers the activity.
+                let landed = (try? await handle.refetch()) != nil
                 inFlight -= 1
                 queued.remove(job.threadID)
-                if handle.isReady {
+                if landed {
                     fetchedActivity[job.threadID] = job.activity
                     failedAt[job.threadID] = nil
                 } else {
