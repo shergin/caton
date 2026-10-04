@@ -60,8 +60,10 @@ icon into `Sources/Caton/Resources` from `logo.png` and `icon-*.png` at the
 root; run it after changing those.
 
 `./scripts/bundle.sh` builds `build/Caton.app`, versioned from
-`Sources/Caton/App/AppInfo.swift`. The app checks GitHub Releases for a newer
-version once a day and from "Check for Updates…".
+`Sources/Caton/App/AppInfo.swift`. Releases are meant to ship as a Homebrew
+cask, so `brew upgrade --cask caton` installs updates; the app checks GitHub
+Releases once a day and from "Check for Updates…" and shows that command when
+a newer version is out.
 
 "Sign in with GitHub" uses the device flow of Caton's OAuth App (client id
 `Ov23liz9s5AlvZVZWZ2k`; no secret is involved); `CATON_GITHUB_CLIENT_ID`

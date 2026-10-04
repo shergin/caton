@@ -725,11 +725,16 @@ final class AppModel {
             let alert = NSAlert()
             alert.messageText = updates.status ?? "Caton \(updates.currentVersion)"
             if let release = updates.available {
-                alert.informativeText = "You have \(updates.currentVersion)."
-                alert.addButton(withTitle: "Download")
+                alert.informativeText = "You have \(updates.currentVersion). Update with:\n\(Updates.upgradeCommand)"
+                alert.addButton(withTitle: "Copy Command")
+                alert.addButton(withTitle: "Release Notes")
                 alert.addButton(withTitle: "Later")
                 NSApp.activate()
-                if alert.runModal() == .alertFirstButtonReturn { openURL(release.url) }
+                switch alert.runModal() {
+                case .alertFirstButtonReturn: updates.copyUpgradeCommand()
+                case .alertSecondButtonReturn: openURL(release.url)
+                default: break
+                }
             } else {
                 NSApp.activate()
                 alert.runModal()

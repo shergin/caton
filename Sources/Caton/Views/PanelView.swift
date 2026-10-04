@@ -761,7 +761,14 @@ struct StatusStrip: View {
                     .buttonStyle(.plain)
                     .help("Dismiss")
             case .update(let release):
-                Button("Download") { model.openURL(release.url) }
+                Button("Copy command") {
+                    model.updates.copyUpgradeCommand()
+                    model.toast("Copied \(Updates.upgradeCommand)")
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 11))
+                .help("\(Updates.upgradeCommand) installs \(release.version)")
+                Button("What's new") { model.openURL(release.url) }
                     .buttonStyle(.link)
                     .font(.system(size: 11))
             case .cooldown, .warning:

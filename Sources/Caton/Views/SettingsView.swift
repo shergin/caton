@@ -385,7 +385,11 @@ struct AboutView: View {
                         Button("Check for Updates") { Task { await updates.check(userInitiated: true) } }
                             .disabled(updates.isChecking)
                         if let release = updates.available {
-                            Link("Download \(release.version)", destination: release.url).font(.caption)
+                            HStack(spacing: 6) {
+                                Text(Updates.upgradeCommand).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                Button("Copy") { updates.copyUpgradeCommand() }.controlSize(.small)
+                            }
+                            Link("What's new in \(release.version)", destination: release.url).font(.caption)
                         } else if let status = updates.status {
                             Text(status).font(.caption).foregroundStyle(.secondary)
                         }

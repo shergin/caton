@@ -1,11 +1,10 @@
+import AppKit
 import CatonCore
-import Foundation
 import Observation
 
-/// Checks GitHub Releases for a newer Caton, once a day and on request. A
-/// newer release shows in the panel's status strip with a link to download.
-/// (Installing in place needs signed releases and Sparkle; until then the
-/// release page is the way to update.)
+/// Checks GitHub Releases for a newer Caton, once a day and on request, and
+/// says so in the panel's status strip. Caton ships through Homebrew, which
+/// does the installing: the app only tells the user to run the upgrade.
 @MainActor
 @Observable
 final class Updates {
@@ -15,6 +14,8 @@ final class Updates {
     }
 
     static let latest = URL(string: "https://api.github.com/repos/shergin/caton/releases/latest")!
+    /// What installs an update.
+    static let upgradeCommand = "brew upgrade --cask caton"
     static let interval: TimeInterval = 24 * 3600
 
     private(set) var available: Release?
@@ -38,6 +39,12 @@ final class Updates {
                 try? await Task.sleep(for: .seconds(Self.interval))
             }
         }
+    }
+
+    /// Puts the upgrade command on the clipboard.
+    func copyUpgradeCommand() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Self.upgradeCommand, forType: .string)
     }
 
     func check(userInitiated: Bool) async {
