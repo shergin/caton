@@ -44,3 +44,12 @@ struct SearchQueryTests {
         #expect(SearchQuery.tokens(#"repo:web "launch crash" -is:draft"#) == ["repo:web", "launch crash", "-is:draft"])
     }
 }
+
+struct VersionTests {
+    @Test func versions_compare_part_by_part_and_ignore_a_leading_v() {
+        #expect(Version("v0.10.0")! > Version("0.9.9")!)
+        #expect(Version("1.2")! == Version("1.2.0")!)
+        #expect(Version("1.2.0-beta.1")! == Version("1.2.0")!)
+        #expect(Version("nightly") == nil)
+    }
+}

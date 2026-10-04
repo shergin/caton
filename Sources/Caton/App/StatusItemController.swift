@@ -126,6 +126,7 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "r").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Caton", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -135,6 +136,7 @@ final class StatusItemController: NSObject {
 
     @objc private func refresh() { model.refresh() }
     @objc private func settings() { model.openSettings?() }
+    @objc private func checkForUpdates() { model.checkForUpdates() }
 
     #if DEBUG
     /// Renders the panel's content to a PNG, for checking layout without
@@ -164,8 +166,9 @@ final class StatusItemController: NSObject {
         let state: Assets.MenuBar = !signedIn || model.errorMessage != nil ? .disabled : count > 0 ? .active : .enabled
         button.image = Assets.menuBar(state)
         button.title = signedIn && count > 0 && model.preferences.showsCount ? " \(count)" : ""
-        let description = signedIn ? (count == 1 ? "1 thing needs you" : "\(count) things need you") : "Signed out"
+        let description = signedIn ? model.countsSummary : "Signed out"
         button.toolTip = "Caton · \(description)"
+        button.setAccessibilityLabel("Caton")
         button.setAccessibilityValue(description)
     }
 }

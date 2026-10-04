@@ -142,6 +142,20 @@ struct AppModelTests {
         #expect(model.visibleRows.count == 3)
     }
 
+    @Test func the_status_strip_shows_an_error_before_a_cooldown() {
+        let until = Date.now.addingTimeInterval(120)
+        model.noteCooldown(until)
+        model.errorMessage = "Offline"
+        #expect(model.statusMessage == .error("Offline"))
+        model.dismissError()
+        #expect(model.statusMessage == .cooldown(until: until))
+    }
+
+    @Test func the_menu_bar_summary_counts_every_split() {
+        load([thread("1"), thread("2", reason: .teamMention), thread("3", reason: .subscribed)])
+        #expect(model.countsSummary == "1 needs you · 1 team · 0 following · 1 feed")
+    }
+
     @Test func tab_cycles_through_the_splits() {
         loadThree()
         model.cycleSplit(by: 1)

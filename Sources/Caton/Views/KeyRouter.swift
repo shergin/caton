@@ -50,6 +50,7 @@ struct Command: Identifiable {
         Command("refresh", "Refresh", keys: "r") { $0.refresh() },
         Command("keys", "Keyboard shortcuts", keys: "?") { $0.overlay = .help },
         Command("settings", "Settings…", keys: "⌘,") { $0.openSettings?() },
+        Command("updates", "Check for updates…", keys: "", closesPanel: true) { $0.checkForUpdates() },
     ]
 }
 

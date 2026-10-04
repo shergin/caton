@@ -53,6 +53,9 @@ extension AppModel {
         } catch GitHubError.unauthorized {
             _ = state.queue.fail(action.id, retryable: true, now: .now)
             errorMessage = "GitHub rejected the token. Sign in again."
+        } catch GitHubError.rateLimited(let until) {
+            _ = state.queue.fail(action.id, retryable: true, now: .now)
+            noteCooldown(until)
         } catch {
             let retryable = (error as? GitHubError)?.isRetryable ?? true
             if let dropped = state.queue.fail(action.id, retryable: retryable, now: .now) {

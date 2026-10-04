@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         model.openSettings = { [weak self] in self?.settings.show() }
         model.start()
+        model.updates.start()
         let statusItem = StatusItemController(model: model)
         self.statusItem = statusItem
         model.banners.onOpen = { [weak self, weak statusItem] threadID in

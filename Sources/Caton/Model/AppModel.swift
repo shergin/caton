@@ -48,6 +48,14 @@ final class AppModel {
         case zero
     }
 
+    /// The one message the status strip shows, the most urgent first.
+    enum StatusMessage: Equatable {
+        case error(String)
+        case cooldown(until: Date)
+        case warning(String)
+        case update(Updates.Release)
+    }
+
     /// One step undo can take back.
     enum UndoEntry {
         case queued(UUID)
@@ -77,6 +85,8 @@ final class AppModel {
     private(set) var signInError: String?
     private(set) var deviceSignIn: DeviceSignIn = .idle
     private(set) var isSyncing = false
+    /// When GitHub's rate limit lets requests through again.
+    private(set) var cooldownUntil: Date?
     var cleared: [ClearedEntry] = []
     private(set) var welcome: Welcome?
     /// Baton's environment for the signed-in account, injected into the
@@ -111,6 +121,7 @@ final class AppModel {
 
     let preferences: Preferences
     let banners = Banners()
+    let updates: Updates
     /// Opens the settings window; set by the app delegate.
     @ObservationIgnored var openSettings: (() -> Void)?
 
@@ -144,10 +155,12 @@ final class AppModel {
     init(
         preferences: Preferences = Preferences(),
         persistence: StatePersistence = StatePersistence(),
+        updates: Updates = Updates(),
         openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
         self.preferences = preferences
         self.persistence = persistence
+        self.updates = updates
         self.openURL = openURL
     }
 
@@ -357,9 +370,12 @@ final class AppModel {
             }
             subjects?.searchReviewRequests()
             errorMessage = nil
+            if let cooldownUntil, cooldownUntil <= .now { self.cooldownUntil = nil }
         } catch GitHubError.unauthorized {
             errorMessage = "GitHub rejected the token. Sign in again."
             signOut()
+        } catch GitHubError.rateLimited(let until) {
+            noteCooldown(until)
         } catch is CancellationError {
             return
         } catch {
@@ -516,6 +532,37 @@ final class AppModel {
         }
     }
 
+    /// "3 need you · 12 team · 8 following · 41 feed", for the menu bar's
+    /// tooltip and VoiceOver.
+    var countsSummary: String {
+        let needsMe = snapshot.count(.needsMe)
+        return [
+            needsMe == 0 ? "nothing needs you" : "\(needsMe) need\(needsMe == 1 ? "s" : "") you",
+            "\(snapshot.count(.team)) team",
+            "\(snapshot.count(.following)) following",
+            "\(snapshot.count(.feed)) feed",
+        ].joined(separator: " · ")
+    }
+
+    /// Checks for a newer release and says what it found.
+    func checkForUpdates() {
+        Task {
+            await updates.check(userInitiated: true)
+            let alert = NSAlert()
+            alert.messageText = updates.status ?? "Caton \(updates.currentVersion)"
+            if let release = updates.available {
+                alert.informativeText = "You have \(updates.currentVersion)."
+                alert.addButton(withTitle: "Download")
+                alert.addButton(withTitle: "Later")
+                NSApp.activate()
+                if alert.runModal() == .alertFirstButtonReturn { openURL(release.url) }
+            } else {
+                NSApp.activate()
+                alert.runModal()
+            }
+        }
+    }
+
     /// Shows a thread a banner named.
     func reveal(_ threadID: String?) {
         show(.split(.needsMe))
@@ -535,6 +582,33 @@ final class AppModel {
     }
 
     func dismissError() { errorMessage = nil }
+
+    /// Shows a rate-limit cooldown in the status strip until it ends.
+    func noteCooldown(_ until: Date) {
+        guard until > .now else { return }
+        cooldownUntil = max(until, cooldownUntil ?? .distantPast)
+        Task {
+            try? await Task.sleep(for: .seconds(until.timeIntervalSinceNow + 1))
+            if let cooldownUntil, cooldownUntil <= .now { self.cooldownUntil = nil }
+        }
+    }
+
+    /// What the status strip shows: an error, else a cooldown, else a
+    /// warning, else an available update.
+    var statusMessage: StatusMessage? {
+        if let errorMessage { return .error(errorMessage) }
+        if let cooldownUntil, cooldownUntil > .now { return .cooldown(until: cooldownUntil) }
+        if let warning { return .warning(warning) }
+        if let release = updates.available { return .update(release) }
+        return nil
+    }
+
+    private var warning: String? {
+        if let status = preferences.hotKeyStatus { return status }
+        let retrying = state.queue.actions.filter { $0.attempts > 0 }.count
+        if retrying > 0 { return retrying == 1 ? "1 change is waiting to reach GitHub." : "\(retrying) changes are waiting to reach GitHub." }
+        return nil
+    }
 
     // MARK: Persistence
 
