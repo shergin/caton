@@ -10,7 +10,8 @@ import SwiftUI
 /// a row (and the app model) reads. The model asks the environment for the
 /// same query value, so it shares this view's handle: it keeps the list fresh
 /// in the background and reads it for reminders and the keyboard, while the
-/// view only renders. A pull request here is the same record the inbox's row
+/// view only renders: `storeOrNetwork` shows what the store holds and fetches
+/// only what it lacks. A pull request here is the same record the inbox's row
 /// for it reads, so a merge or a CI result seen by either shows in both.
 struct MyPullRequestsView: View {
     @Query("""
@@ -20,7 +21,7 @@ struct MyPullRequestsView: View {
             ...MyPullRequestList_user
           }
         }
-        """)
+        """, fetchPolicy: .storeOrNetwork)
     var pullRequests: MyPullRequestsQuery
     let model: AppModel
 
