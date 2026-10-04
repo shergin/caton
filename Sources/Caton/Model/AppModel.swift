@@ -90,7 +90,7 @@ final class AppModel {
     // MARK: Observed state
 
     private(set) var account: Account = .signedOut
-    private(set) var snapshot = InboxSnapshot()
+    private(set) var snapshot = InboxSnapshot() { didSet { snapshotVersion &+= 1 } }
     var section: Section = .split(.needsMe)
     var selectedID: String?
     var checked: Set<String> = []
@@ -166,7 +166,16 @@ final class AppModel {
     @ObservationIgnored var undoStack: [UndoEntry] = []
     /// Snoozes that ended this session, and why, so the note outlives the snooze.
     @ObservationIgnored var wokenSnoozes: [String: Resurfacing] = [:]
-    @ObservationIgnored var repositoryOrder: [String] = []
+    /// Repositories in the order the open panel first showed them.
+    @ObservationIgnored var repositoryOrder: [RepositoryName] = [] {
+        didSet { if repositoryOrder.isEmpty { listCache = nil } }
+    }
+    /// Counts snapshot changes, so the list's cache knows when it is stale.
+    @ObservationIgnored var snapshotVersion = 0
+    /// The current section's list, laid out once per change to what it
+    /// depends on; a keystroke reads it many times.
+    @ObservationIgnored var listCache: ListCache?
+    @ObservationIgnored var savedCountCache: (key: [Int], counts: [UUID: Int])?
     @ObservationIgnored var selectedIndexHint = 0
     /// No change reaches GitHub; for development against a real account.
     @ObservationIgnored let dryRun = ProcessInfo.processInfo.environment["CATON_DRY_RUN"] == "1"

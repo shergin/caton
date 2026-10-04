@@ -5,8 +5,57 @@ import CatonCore
 extension AppModel {
     // MARK: What the list shows
 
+    /// The current section's threads and rows, and what they were computed
+    /// from. Everything a keystroke reads (the selection's neighbours, the
+    /// rows to draw, the bundle under the selection) reads this.
+    struct ListCache {
+        struct Key: Equatable {
+            var snapshot: Int
+            var settings: Int
+            var section: Section
+            var query: String
+            var unreadOnly: Bool
+            var grouped: Bool
+            var expanded: Set<String>
+        }
+
+        let key: Key
+        let items: [InboxItem]
+        let rows: [ListRow]
+    }
+
     /// The rows of the current section, filtered and in display order.
-    var visibleItems: [InboxItem] {
+    var visibleItems: [InboxItem] { list.items }
+
+    /// The rows as the list draws them: headers, threads and, in Feed
+    /// without a search, bundles.
+    var visibleRows: [ListRow] { list.rows }
+
+    /// The list for the current inputs: from the cache when they have not
+    /// changed. Reading the inputs here is what lets views observe them.
+    private var list: ListCache {
+        _ = snapshot
+        let key = ListCache.Key(
+            snapshot: snapshotVersion,
+            settings: settingsVersion,
+            section: section,
+            query: searchQuery,
+            unreadOnly: unreadOnly,
+            grouped: groupByRepository,
+            expanded: expandedBundles
+        )
+        if let listCache, listCache.key == key { return listCache }
+        let items = layoutItems()
+        let bundles = section == .split(.feed) && SearchQuery(searchQuery).isEmpty
+        let rows = ListLayout.rows(items, groupByRepository: groupByRepository, bundles: bundles, expanded: expandedBundles) { [self] item in
+            item.classification.actorKind == .bot ? facts(for: item.thread)?.author?.login : nil
+        }
+        let cache = ListCache(key: key, items: items, rows: rows)
+        listCache = cache
+        return cache
+    }
+
+    private func layoutItems() -> [InboxItem] {
         var items: [InboxItem]
         switch section {
         case .split(let split): items = snapshot.items(in: split)
@@ -23,26 +72,16 @@ extension AppModel {
         }
         guard groupByRepository else { return items }
         // Repository order holds while the panel is open, so rows do not jump.
-        for item in items where !repositoryOrder.contains(item.thread.repository.fullName) {
-            repositoryOrder.append(item.thread.repository.fullName)
+        var rank = Dictionary(repositoryOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        for item in items where rank[item.thread.repository] == nil {
+            rank[item.thread.repository] = repositoryOrder.count
+            repositoryOrder.append(item.thread.repository)
         }
-        let rank = Dictionary(repositoryOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-        return items.enumerated()
-            .sorted { lhs, rhs in
-                let left = rank[lhs.element.thread.repository.fullName] ?? .max
-                let right = rank[rhs.element.thread.repository.fullName] ?? .max
-                return left == right ? lhs.offset < rhs.offset : left < right
-            }
-            .map(\.element)
-    }
-
-    /// The rows as the list draws them: headers, threads and, in Feed
-    /// without a search, bundles.
-    var visibleRows: [ListRow] {
-        let bundles = section == .split(.feed) && SearchQuery(searchQuery).isEmpty
-        return ListLayout.rows(visibleItems, groupByRepository: groupByRepository, bundles: bundles, expanded: expandedBundles) { [self] item in
-            item.classification.actorKind == .bot ? facts(for: item.thread)?.author?.login : nil
-        }
+        // Sort positions, not the items themselves: an item is large.
+        let ranks = items.map { rank[$0.thread.repository] ?? .max }
+        return items.indices
+            .sorted { ranks[$0] == ranks[$1] ? $0 < $1 : ranks[$0] < ranks[$1] }
+            .map { items[$0] }
     }
 
     /// The ids selection moves through, in order.
@@ -67,7 +106,7 @@ extension AppModel {
     func count(_ section: Section) -> Int {
         switch section {
         case .split(let split): snapshot.count(split)
-        case .saved(let id): savedItems(id).count
+        case .saved(let id): savedCount(id)
         case .myPullRequests: myPullRequestNodes.count
         case .snoozed: snapshot.snoozed.count
         case .later: snapshot.later.count
@@ -103,6 +142,17 @@ extension AppModel {
     }
 
     func savedSearch(_ id: UUID) -> SavedSearch? { savedSearches.first { $0.id == id } }
+
+    /// How many threads a saved search matches; every saved search is
+    /// counted once per change to the inbox, not once per redraw.
+    private func savedCount(_ id: UUID) -> Int {
+        _ = snapshot
+        let key = [snapshotVersion, settingsVersion]
+        if let savedCountCache, savedCountCache.key == key { return savedCountCache.counts[id] ?? 0 }
+        let counts = Dictionary(uniqueKeysWithValues: state.savedSearches.map { ($0.id, savedItems($0.id).count) })
+        savedCountCache = (key, counts)
+        return counts[id] ?? 0
+    }
 
     /// Every thread in the four splits that the saved query matches.
     private func savedItems(_ id: UUID) -> [InboxItem] {
