@@ -77,6 +77,10 @@ final class SubjectStore {
     private var reviewRequestsByThreadID: [String: ReviewRequest] = [:]
     /// Review requests without a notification thread, as threads.
     private(set) var reviewRequestThreads: [NotificationThread] = []
+    /// The viewer's open pull requests. This is the operation the My PRs view
+    /// declares, asked for by value: the environment hands the view and this
+    /// store the same handle, so the view renders what is kept fresh here.
+    let myPullRequests: OperationHandle<MyPullRequestsQuery>
 
     init(environment: Baton.Environment, viewerID: String, fetchedActivity: [String: Date]) {
         self.environment = environment
@@ -84,17 +88,29 @@ final class SubjectStore {
         self.fetchedActivity = fetchedActivity
         reviewRequests = environment.handle(for: ReviewRequestsQuery(), fetchPolicy: .storeOnly)
         reviewRequests.retain()
+        // From the image at launch when an earlier one fetched it; fetched now otherwise.
+        myPullRequests = environment.handle(for: MyPullRequestsQuery(), fetchPolicy: .storeOrNetwork)
+        myPullRequests.retain()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CATON_DUMP"] == "1" {
+            let ready = if case .ready = myPullRequests.phase { true } else { false }
+            FileHandle.standardError.write(Data("[caton] my pull requests at launch: \(ready ? "ready from the image" : "not in the store")\n".utf8))
+        }
+        #endif
         indexReviewRequests()
     }
 
-    /// Searches for open pull requests that request the viewer by name, at
-    /// most every few minutes; forced, at most once a minute.
+    /// Runs the searches outside the feed, at most every few minutes; forced,
+    /// at most once a minute: open pull requests that request the viewer by
+    /// name, and the viewer's own open pull requests.
     func searchReviewRequests(force: Bool = false, now: Date = .now) {
         let age = now.timeIntervalSince(lastReviewRequestSearch)
         guard age > (force ? 60 : Self.reviewRequestInterval) else { return }
         lastReviewRequestSearch = now
         Task {
-            await reviewRequests.refetch()
+            async let requests: Void = reviewRequests.refetch()
+            async let mine: Void = myPullRequests.refetch()
+            _ = await (requests, mine)
             indexReviewRequests()
             onChange?()
         }
@@ -198,6 +214,7 @@ final class SubjectStore {
     /// Releases every handle, for a sign-out.
     func releaseAll() {
         reviewRequests.release()
+        myPullRequests.release()
         for handle in handles.values { handle.release() }
         handles.removeAll()
         discovery.removeAll()

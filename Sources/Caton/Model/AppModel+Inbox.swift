@@ -11,6 +11,7 @@ extension AppModel {
         switch section {
         case .split(let split): items = snapshot.items(in: split)
         case .saved(let id): items = savedItems(id)
+        case .myPullRequests: items = []
         case .snoozed: items = snapshot.snoozed
         case .later: items = snapshot.later
         case .cleared: items = []
@@ -45,7 +46,10 @@ extension AppModel {
     }
 
     /// The ids selection moves through, in order.
-    private var selectableIDs: [String] { visibleRows.filter(\.isSelectable).map(\.id) }
+    private var selectableIDs: [String] {
+        if section == .myPullRequests { return myPullRequestNodes.map(\.id) }
+        return visibleRows.filter(\.isSelectable).map(\.id)
+    }
 
     var needsMeCount: Int { snapshot.count(.needsMe) }
 
@@ -64,6 +68,7 @@ extension AppModel {
         switch section {
         case .split(let split): snapshot.count(split)
         case .saved(let id): savedItems(id).count
+        case .myPullRequests: myPullRequestNodes.count
         case .snoozed: snapshot.snoozed.count
         case .later: snapshot.later.count
         case .cleared: cleared.count
@@ -265,6 +270,10 @@ extension AppModel {
     /// On a bundle, opens or closes it instead, and the panel stays.
     @discardableResult
     func open(_ id: String? = nil) -> Bool {
+        if section == .myPullRequests {
+            openPullRequest(id)
+            return true
+        }
         if checked.isEmpty, let bundleID = id ?? selectedID, ThreadBundle.isBundleID(bundleID) {
             toggleBundle(bundleID)
             return false
@@ -274,7 +283,7 @@ extension AppModel {
         for item in items {
             // Practice threads have no page on GitHub.
             if !isPractice { openURL(item.thread.webURL) }
-            if item.isUnread {
+            if item.isUnread, item.thread.isFromFeed {
                 state.readMarks[item.id] = item.thread.updatedAt
                 state.queue.enqueue(.markRead, [.init(threadID: item.id, activity: item.thread.updatedAt)], now: .now, grace: 0)
             }
@@ -299,8 +308,20 @@ extension AppModel {
     func ignore(_ id: String? = nil) { dismiss(.ignore, id, verbTitle: "Ignored") }
 
     private func dismiss(_ verb: Verb, _ id: String?, verbTitle: String) {
-        let items = targets(id)
+        var items = targets(id)
         guard !items.isEmpty else { return }
+        // A reminder row is Caton's own: dismissing it ends the reminder.
+        let reminders = items.filter { Self.pullRequestID(ofReminder: $0.id) != nil }
+        if !reminders.isEmpty {
+            settleReminders(reminders)
+            items.removeAll { Self.pullRequestID(ofReminder: $0.id) != nil }
+            if items.isEmpty {
+                checked.removeAll()
+                toast(reminders.count == 1 ? "Reminder done · z to undo" : "\(reminders.count) reminders done · z to undo")
+                recompute()
+                return
+            }
+        }
         let batch = state.queue.enqueue(verb, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
         state.count(byYou: items.count, now: .now)
         undoStack.append(.queued(batch))
@@ -313,8 +334,19 @@ extension AppModel {
     /// Hides the selection until a time. With `onlyIfQuiet` it comes back
     /// on any new activity, and at the time only if nothing happened.
     func snooze(_ id: String? = nil, until: Date, onlyIfQuiet: Bool = false) {
-        let items = targets(id)
+        var items = targets(id)
         guard !items.isEmpty else { return }
+        // A reminder row moves its reminder.
+        let reminders = items.filter { Self.pullRequestID(ofReminder: $0.id) != nil }
+        if !reminders.isEmpty {
+            settleReminders(reminders, until: until)
+            items.removeAll { Self.pullRequestID(ofReminder: $0.id) != nil }
+            if items.isEmpty {
+                toast("Reminding \(until.formatted(.relative(presentation: .named))) · z to undo")
+                recompute()
+                return
+            }
+        }
         var previous: [String: Snooze?] = [:]
         for item in items {
             previous[item.id] = state.snoozes[item.id]
@@ -347,6 +379,11 @@ extension AppModel {
     /// Opens the snooze picker. On the user's own pull request the reminder
     /// defaults to waiting for silence: a follow-up if no one answers.
     func beginSnooze(_ id: String? = nil) {
+        if section == .myPullRequests {
+            beginReminder(id)
+            return
+        }
+        snoozeTarget = .threads
         if let id { select(id) }
         guard let item = selectedItem else { return }
         snoozeOnlyIfQuiet = item.classification.badge == .author
@@ -508,6 +545,11 @@ extension AppModel {
             for (id, date) in previous { state.later[id] = date }
             toast("Undone")
             recompute()
+        case .followUps(let previous):
+            for (id, followUp) in previous { state.followUps[id] = followUp }
+            settingsVersion += 1
+            toast("Undone")
+            recompute()
         }
     }
 
@@ -540,6 +582,10 @@ extension AppModel {
     }
 
     func copyLink(_ id: String? = nil) {
+        if section == .myPullRequests {
+            copyPullRequestLink(id)
+            return
+        }
         guard let item = targets(id).first else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.thread.webURL.absoluteString, forType: .string)

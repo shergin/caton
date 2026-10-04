@@ -28,6 +28,7 @@ final class AppModel {
     enum Section: Hashable {
         case split(Split)
         case saved(UUID)
+        case myPullRequests
         case snoozed
         case later
         case cleared
@@ -65,6 +66,15 @@ final class AppModel {
         case queued(UUID)
         case snoozed([String: Snooze?])
         case later([String: Date?])
+        case followUps([String: FollowUp?])
+    }
+
+    /// What the snooze picker will act on.
+    enum SnoozeTarget: Equatable {
+        /// The selected or checked threads.
+        case threads
+        /// A reminder on one of the viewer's pull requests, by node id.
+        case pullRequest(String)
     }
 
     /// What the first sync of an account found, for the welcome summary.
@@ -104,6 +114,7 @@ final class AppModel {
     var overlay: Overlay = .none
     /// The snooze picker's mode: come back only if nothing happens.
     var snoozeOnlyIfQuiet = false
+    var snoozeTarget: SnoozeTarget = .threads
     /// A `g` waiting for its second key.
     @ObservationIgnored var pendingG = false
     var unreadOnly = false { didSet { reselect() } }
@@ -600,10 +611,11 @@ final class AppModel {
 
     func recompute() {
         let now = Date.now
-        var next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, now: now)
+        let reminders = dueReminders(now: now)
+        var next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, reminders: reminders, now: now)
         if !next.autoClears.isEmpty {
             applyRuleClears(next.autoClears, now: now)
-            next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, now: now)
+            next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, reminders: reminders, now: now)
         }
         for (id, why) in next.wokenSnoozes {
             state.snoozes[id] = nil
@@ -820,7 +832,8 @@ final class AppModel {
     // MARK: Row data
 
     func lenses(for id: String) -> SubjectStore.Lenses {
-        isPractice ? SubjectStore.Lenses() : subjects?.lenses(for: id) ?? SubjectStore.Lenses()
+        if isPractice { return SubjectStore.Lenses() }
+        return reminderLenses(id) ?? subjects?.lenses(for: id) ?? SubjectStore.Lenses()
     }
 
     func facts(for thread: NotificationThread) -> SubjectFacts? {
@@ -915,6 +928,8 @@ final class AppModel {
         let counts = Split.allCases.map { "\($0.title) \(snapshot.count($0))" }.joined(separator: " · ")
         let enriched = threads.values.filter { subjects?.facts(for: $0) != nil }.count
         let requests = subjects?.reviewRequestThreads.count ?? 0
+        let mine = myPullRequestNodes.map { MyPullRequests.status($0.pullRequestStanding) }.map { PullRequestStanding.of($0).summary(now: .now) }
+        log("[caton] my pull requests \(mine.count): \(mine.prefix(6).joined(separator: " | "))")
         log("[caton] threads \(threads.count), enriched \(enriched), review requests \(requests), cleared \(state.cleared.count), snoozed \(snapshot.snoozed.count) | \(counts)")
         for split in Split.allCases {
             for item in snapshot.items(in: split).prefix(4) {

@@ -112,6 +112,11 @@ public struct NotificationThread: Identifiable, Hashable, Codable, Sendable {
         self.webURL = webURL
     }
 
+    /// Whether GitHub's feed delivered the thread, so verbs can reach it.
+    /// Threads Caton makes up (review requests found by search, reminders,
+    /// the practice inbox) have ids no feed thread has.
+    public var isFromFeed: Bool { !id.isEmpty && id.allSatisfy(\.isNumber) }
+
     /// `owner/name#123`, or the repository alone.
     public var reference: String {
         guard let number else { return repository.fullName }

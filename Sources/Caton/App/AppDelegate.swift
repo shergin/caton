@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let section = ProcessInfo.processInfo.environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) {
             model.show(.split(section))
         }
+        if ProcessInfo.processInfo.environment["CATON_SECTION"] == "prs" { model.show(.myPullRequests) }
         let environment = ProcessInfo.processInfo.environment
         if environment["CATON_SHOW_SETTINGS"] == "1" { settings.show() }
         if environment["CATON_PRACTICE"] == "1" {
@@ -54,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "tips": model.overlay = .tips
                 case "zero": model.overlay = .zero
                 case "none": model.overlay = .none
+                case "remind":
+                    model.selectFirst()
+                    model.beginReminder()
                 default: break
                 }
                 try? await Task.sleep(for: .seconds(2))

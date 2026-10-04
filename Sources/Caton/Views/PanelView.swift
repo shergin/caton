@@ -107,6 +107,7 @@ struct InboxView: View {
                 .scrollBounceBehavior(.basedOnSize)
                 Spacer(minLength: 0)
                 Menu {
+                    Button("My pull requests (\(model.count(.myPullRequests)))") { model.show(.myPullRequests) }
                     Button("Snoozed (\(model.count(.snoozed)))") { model.show(.snoozed) }
                     Button("Later (\(model.count(.later)))") { model.show(.later) }
                     Button("Cleared (\(model.count(.cleared)))") { model.show(.cleared) }
@@ -116,7 +117,7 @@ struct InboxView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Snoozed, Later and Cleared")
+                .help("My pull requests, Snoozed, Later and Cleared")
             }
         }
         .padding(.horizontal, 12)
@@ -156,6 +157,15 @@ struct InboxView: View {
         switch model.section {
         case .cleared:
             ClearedList(model: model)
+        case .myPullRequests:
+            if model.isPractice {
+                Text("Your own pull requests show here when you are signed in.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                MyPullRequestsView(pullRequests: .init(), model: model)
+            }
         default:
             let rows = model.visibleRows
             if rows.isEmpty {
@@ -271,7 +281,12 @@ struct InboxView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if model.checked.isEmpty, model.selectedBundle != nil {
+            if model.section == .myPullRequests {
+                Hint(key: "⏎", label: "open")
+                Hint(key: "h", label: "remind")
+                Hint(key: "y", label: "copy link")
+                Hint(key: "?", label: "keys")
+            } else if model.checked.isEmpty, model.selectedBundle != nil {
                 Hint(key: "⏎", label: "open bundle")
                 Hint(key: "e", label: "done all")
                 Hint(key: "x", label: "select all")
@@ -361,6 +376,7 @@ struct EmptyState: View {
         case .split(.needsMe): return "Nothing needs you"
         case .split: return "All clear"
         case .saved(let id): return "Nothing matches \(model.savedSearch(id)?.query ?? "this search")"
+        case .myPullRequests: return "No open pull requests"
         case .snoozed: return "Nothing snoozed"
         case .later: return "Nothing saved for later"
         case .cleared: return "Nothing cleared this week"
@@ -409,13 +425,23 @@ struct ClearedList: View {
 struct SnoozePicker: View {
     @Bindable var model: AppModel
 
+    /// The pull request a reminder is being set on, if that is what this is.
+    private var pullRequest: String? {
+        if case .pullRequest(let id) = model.snoozeTarget { return id }
+        return nil
+    }
+
+    private var title: String {
+        if pullRequest != nil { return "Remind me if nobody answers by" }
+        return model.snoozeOnlyIfQuiet ? "Remind me if nothing happens by" : "Snooze until"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(model.snoozeOnlyIfQuiet ? "Remind me if nothing happens by" : "Snooze until").font(.system(size: 12, weight: .semibold))
+            Text(title).font(.system(size: 12, weight: .semibold))
             ForEach(SnoozeOption.all) { option in
                 Button {
-                    model.overlay = .none
-                    model.snooze(until: option.date(), onlyIfQuiet: model.snoozeOnlyIfQuiet)
+                    model.chooseSnooze(option.date())
                 } label: {
                     HStack {
                         Text(option.key).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
@@ -426,19 +452,39 @@ struct SnoozePicker: View {
                 .buttonStyle(.plain)
             }
             Divider()
-            Toggle(isOn: $model.snoozeOnlyIfQuiet) {
-                HStack {
-                    Text("n").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                    Text("Only if nothing happens").font(.system(size: 12))
+            if let pullRequest {
+                if model.followUp(for: pullRequest) != nil {
+                    Button {
+                        model.overlay = .none
+                        model.clearReminder(pullRequest)
+                    } label: {
+                        HStack {
+                            Text("x").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                            Text("Remove the reminder").font(.system(size: 12))
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
+                Text("If nobody has reviewed or commented by then, it shows in Needs me.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Toggle(isOn: $model.snoozeOnlyIfQuiet) {
+                    HStack {
+                        Text("n").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                        Text("Only if nothing happens").font(.system(size: 12))
+                    }
+                }
+                .toggleStyle(.checkbox)
+                Text(model.snoozeOnlyIfQuiet
+                    ? "Comes back on any new activity; at the time, only if there was none."
+                    : "Comes back early if something new needs you.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .toggleStyle(.checkbox)
-            Text(model.snoozeOnlyIfQuiet
-                ? "Comes back on any new activity; at the time, only if there was none."
-                : "Comes back early if something new needs you.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(width: 240)

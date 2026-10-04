@@ -26,8 +26,9 @@ extension AppModel {
     private func execute(_ action: QueuedAction) async {
         let rest = isPractice ? nil : rest
         guard rest != nil || isPractice else { return }
-        // A review request without a notification has no thread to change.
-        let hasThread = !action.threadID.hasPrefix(SubjectStore.reviewRequestPrefix)
+        // A thread Caton made up (a review request found by search) has
+        // nothing on GitHub to change.
+        let hasThread = action.threadID.allSatisfy(\.isNumber)
         do {
             if !dryRun, hasThread, let rest {
                 switch action.verb {

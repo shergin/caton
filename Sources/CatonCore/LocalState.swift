@@ -128,6 +128,8 @@ public struct LocalState: Codable, Hashable, Sendable {
     /// Clears per day (`yyyy-MM-dd`), kept two weeks. Never leaves the Mac.
     public var tallies: [String: Tally] = [:]
     public var savedSearches: [SavedSearch] = []
+    /// Reminders on the viewer's own pull requests, by pull request node id.
+    public var followUps: [String: FollowUp] = [:]
 
     public static let clearedRetention: TimeInterval = 7 * 24 * 3600
     public static let dismissalRetention: TimeInterval = 30 * 24 * 3600
@@ -135,7 +137,7 @@ public struct LocalState: Codable, Hashable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case dismissals, readMarks, snoozes, later, cleared, ruleExemptions, settings, queue, alerted, tallies, savedSearches
+        case dismissals, readMarks, snoozes, later, cleared, ruleExemptions, settings, queue, alerted, tallies, savedSearches, followUps
     }
 
     /// Reads documents written by earlier versions: a missing key is empty.
@@ -152,6 +154,7 @@ public struct LocalState: Codable, Hashable, Sendable {
         alerted = try container.decodeIfPresent([String: Date].self, forKey: .alerted) ?? [:]
         tallies = try container.decodeIfPresent([String: Tally].self, forKey: .tallies) ?? [:]
         savedSearches = try container.decodeIfPresent([SavedSearch].self, forKey: .savedSearches) ?? []
+        followUps = try container.decodeIfPresent([String: FollowUp].self, forKey: .followUps) ?? [:]
     }
 
     /// Counts clears for the day of `now`.

@@ -231,6 +231,39 @@ struct AppModelTests {
         #expect(persistence.load().state.queue.isEmpty)
     }
 
+    func followUp(until: Date) -> FollowUp {
+        FollowUp(until: until, answeredAt: nil, repository: RepositoryName(owner: "acme", name: "web"), number: 7, title: "Add caching", url: URL(string: "https://github.com/acme/web/pull/7")!)
+    }
+
+    @Test func a_due_reminder_joins_needs_me_until_done() {
+        loadThree()
+        model.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(-60))
+        model.recompute()
+        let reminder = model.snapshot.items(in: .needsMe).first { $0.id == "followup:PR_7" }
+        #expect(reminder?.classification.badge == .followUp)
+        #expect(reminder?.resurfacing == .noActivity)
+        #expect(model.needsMeCount == 4)
+        model.done("followup:PR_7")
+        #expect(model.state.followUps.isEmpty)
+        #expect(model.state.queue.isEmpty)
+        #expect(model.needsMeCount == 3)
+        model.undo()
+        #expect(model.needsMeCount == 4)
+    }
+
+    @Test func a_reminder_not_yet_due_stays_out_and_snoozing_one_moves_it() {
+        loadThree()
+        model.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(3600))
+        model.recompute()
+        #expect(model.needsMeCount == 3)
+        model.state.followUps["PR_7"]?.until = .now.addingTimeInterval(-1)
+        model.recompute()
+        let later = Date.now.addingTimeInterval(7200)
+        model.snooze("followup:PR_7", until: later)
+        #expect(model.state.followUps["PR_7"]?.until == later)
+        #expect(model.needsMeCount == 3)
+    }
+
     @Test func tab_cycles_through_the_splits() {
         loadThree()
         model.cycleSplit(by: 1)

@@ -53,6 +53,13 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
     public var isUnread: Bool
     public var resurfacing: Resurfacing?
 
+    public init(thread: NotificationThread, classification: Classification, isUnread: Bool, resurfacing: Resurfacing? = nil) {
+        self.thread = thread
+        self.classification = classification
+        self.isUnread = isUnread
+        self.resurfacing = resurfacing
+    }
+
     public var id: String { thread.id }
 }
 
@@ -83,13 +90,17 @@ public struct InboxSnapshot: Equatable, Sendable {
 /// Computes the inbox from the feed, the subjects' facts and local state.
 /// Pure, so every rule about what shows where is testable without a network.
 public enum InboxProjection {
+    /// - Parameter reminders: follow-ups that came due, already classified:
+    ///   they join Needs me as they are.
     public static func project(
         threads: some Sequence<NotificationThread>,
         facts: (NotificationThread) -> SubjectFacts?,
         state: LocalState,
+        reminders: [InboxItem] = [],
         now: Date
     ) -> InboxSnapshot {
         var snapshot = InboxSnapshot()
+        snapshot.splits[.needsMe] = reminders
         for thread in threads {
             if state.queue.hides(threadID: thread.id, activity: thread.updatedAt) { continue }
 

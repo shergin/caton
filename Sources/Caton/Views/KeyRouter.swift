@@ -42,6 +42,7 @@ struct Command: Identifiable {
         Command("team", "Go to Team", keys: "2") { $0.show(.split(.team)) },
         Command("following", "Go to Following", keys: "3") { $0.show(.split(.following)) },
         Command("feed", "Go to Feed", keys: "4") { $0.show(.split(.feed)) },
+        Command("my-pull-requests", "Go to My pull requests", keys: "g p") { $0.show(.myPullRequests) },
         Command("snoozed", "Go to Snoozed", keys: "g s") { $0.show(.snoozed) },
         Command("later-list", "Go to Later", keys: "g l") { $0.show(.later) },
         Command("cleared", "Go to Cleared", keys: "g c") { $0.show(.cleared) },
@@ -80,11 +81,17 @@ enum KeyRouter {
         switch model.overlay {
         case .snooze:
             if event.keyCode == 53 { model.overlay = .none; return true }
-            if characters == "n" { model.snoozeOnlyIfQuiet.toggle(); return true }
-            if let option = SnoozeOption.all.first(where: { $0.key == characters }) {
-                model.overlay = .none
-                model.snooze(until: option.date(), onlyIfQuiet: model.snoozeOnlyIfQuiet)
+            if case .pullRequest(let id) = model.snoozeTarget {
+                if characters == "x" {
+                    model.overlay = .none
+                    model.clearReminder(id)
+                    return true
+                }
+            } else if characters == "n" {
+                model.snoozeOnlyIfQuiet.toggle()
+                return true
             }
+            if let option = SnoozeOption.all.first(where: { $0.key == characters }) { model.chooseSnooze(option.date()) }
             return true
         case .help, .why:
             model.overlay = .none
@@ -176,6 +183,7 @@ enum KeyRouter {
             case "s": model.show(.snoozed)
             case "l": model.show(.later)
             case "c": model.show(.cleared)
+            case "p": model.show(.myPullRequests)
             default: break
             }
             return true

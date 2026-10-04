@@ -38,6 +38,8 @@ public enum Badge: Hashable, Sendable {
     case stateChanged
     case ciActivity
     case subscribed
+    /// A reminder the viewer set on their own pull request came due unanswered.
+    case followUp
 
     /// Why the viewer's own open pull request needs them.
     public enum YourPullRequest: Hashable, Sendable {
@@ -67,13 +69,14 @@ public enum Badge: Hashable, Sendable {
         case .stateChanged: "State change"
         case .ciActivity: "CI activity"
         case .subscribed: "Watching"
+        case .followUp: "Follow up"
         }
     }
 
     /// Whether the badge names a direct ask of the viewer.
     public var isDirect: Bool {
         switch self {
-        case .reviewYou, .mentioned, .assigned, .approvalRequested, .securityAlert, .invitation, .yourPullRequest:
+        case .reviewYou, .mentioned, .assigned, .approvalRequested, .securityAlert, .invitation, .yourPullRequest, .followUp:
             true
         default:
             false
