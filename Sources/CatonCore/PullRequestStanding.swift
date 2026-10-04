@@ -22,20 +22,6 @@ public struct PullRequestStatus: Hashable, Sendable {
 
         /// `@alex`, `@acme/web`.
         public var handle: String { "@" + name }
-
-        /// The reviewer a GitHub profile or team URL names:
-        /// `https://github.com/alex`, `https://github.com/orgs/acme/teams/web`.
-        public init?(url: URL) {
-            let parts = url.pathComponents.filter { $0 != "/" }
-            if parts.count == 4, parts[0] == "orgs", parts[2] == "teams" {
-                self.init(name: "\(parts[1])/\(parts[3])", isTeam: true)
-            } else if let last = parts.last {
-                // Apps live under /apps/name; people and bots at the top level.
-                self.init(name: last)
-            } else {
-                return nil
-            }
-        }
     }
 
     /// One reviewer's latest review.

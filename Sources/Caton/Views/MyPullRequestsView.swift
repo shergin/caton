@@ -207,10 +207,8 @@ struct StandingLabel: View {
           reviewRequests(first: 10) {
             nodes {
               requestedReviewer {
-                ... on User { url }
-                ... on Team { url }
-                ... on Bot { url }
-                ... on Mannequin { url }
+                ... on Actor { login }
+                ... on Team { slug organization { login } }
               }
             }
           }
@@ -263,8 +261,8 @@ enum MyPullRequests {
         let requests = fragment.reviewRequests?.nodes.map { Array($0) } ?? []
         let reviewers = requests.compactMap { node -> PullRequestStatus.Reviewer? in
             guard let reviewer = node.requestedReviewer else { return nil }
-            let url = reviewer.asUser?.url ?? reviewer.asTeam?.url ?? reviewer.asBot?.url ?? reviewer.asMannequin?.url
-            return url.flatMap(URL.init(string:)).flatMap(PullRequestStatus.Reviewer.init(url:))
+            if let team = reviewer.asTeam { return .init(name: "\(team.organization.login)/\(team.slug)", isTeam: true) }
+            return reviewer.asActor.map { .init(name: $0.login) }
         }
         let latest = fragment.latestReviews?.nodes.map { Array($0) } ?? []
         let reviews = latest.compactMap { node -> PullRequestStatus.Review? in

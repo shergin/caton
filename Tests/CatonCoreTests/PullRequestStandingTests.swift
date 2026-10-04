@@ -49,12 +49,6 @@ struct PullRequestStandingTests {
         #expect(result.group == .yourMove)
     }
 
-    @Test func reviewers_are_read_from_their_profile_and_team_urls() {
-        #expect(PullRequestStatus.Reviewer(url: URL(string: "https://github.com/alex")!) == .init(name: "alex"))
-        #expect(PullRequestStatus.Reviewer(url: URL(string: "https://github.com/orgs/acme/teams/web")!) == .init(name: "acme/web", isTeam: true))
-        #expect(PullRequestStatus.Reviewer(url: URL(string: "https://github.com/apps/copilot-pull-request-reviewer")!)?.name == "copilot-pull-request-reviewer")
-    }
-
     @Test func an_answer_is_a_review_or_comment_by_someone_else() {
         var status = PullRequestStatus(createdAt: created)
         status.latestReviews = [.init(login: "me", state: .commented, at: reference)]
