@@ -59,7 +59,7 @@ every split; nothing there reaches GitHub or is saved.
 icon into `Sources/Caton/Resources` from `logo.png` and `icon-*.png` at the
 root; run it after changing those.
 
-`./scripts/bundle.sh` builds `build/Caton.app` for Apple silicon and Intel,
+`./scripts/bundle.sh` builds `build/Caton.app` for Apple silicon,
 versioned from `Sources/Caton/App/AppInfo.swift`; `./scripts/release.sh`
 zips it for a release ([homebrew/README.md](homebrew/README.md) has the steps). Releases are meant to ship as a Homebrew
 cask in Caton's own tap, so `brew upgrade --cask caton` installs updates; the app checks GitHub

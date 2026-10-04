@@ -2,7 +2,7 @@
 
 [`caton.rb`](caton.rb) is the canonical copy of the cask. The live one is
 `Casks/caton.rb` in the tap repo [`shergin/homebrew-tap`](https://github.com/shergin/homebrew-tap).
-It installs the universal `Caton.app` from the GitHub Release's zip.
+It installs `Caton.app` (Apple silicon) from the GitHub Release's zip.
 
 ## Install
 

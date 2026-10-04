@@ -1,19 +1,17 @@
 #!/bin/sh
-# Builds Caton.app (release, Apple silicon and Intel) into build/.
+# Builds Caton.app (release, Apple silicon) into build/.
 # CATON_GITHUB_CLIENT_ID overrides the OAuth App "Sign in with GitHub" uses
 # (Caton's own by default).
 set -e
 cd "$(dirname "$0")/.."
-# SwiftPM's multi-architecture build can't resolve Baton's macro and plugin
-# targets, so each architecture builds on its own and lipo joins them.
-for arch in arm64 x86_64; do
-  swift build -c release --arch "$arch"
-done
+# Apple silicon only: macOS 26 is the last release for Intel Macs, and
+# macOS warns about apps that carry Intel code.
+swift build -c release --arch arm64
 version=$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/Caton/App/AppInfo.swift)
 app=build/Caton.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-lipo -create .build/arm64-apple-macosx/release/Caton .build/x86_64-apple-macosx/release/Caton -output "$app/Contents/MacOS/Caton"
+cp .build/arm64-apple-macosx/release/Caton "$app/Contents/MacOS/Caton"
 cp -R .build/arm64-apple-macosx/release/Caton_Caton.bundle "$app/Contents/Resources/"
 cp Sources/Caton/Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST

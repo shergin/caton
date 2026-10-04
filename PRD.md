@@ -382,7 +382,7 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 | **Security** | Keychain only; HTTPS to `api.github.com` / `github.com` only. Reject untrusted pagination or subject URLs. Hardened runtime. |
 | **Privacy** | No server, no telemetry. Optional local-only stats ("this week: 312 cleared by rules, 41 by you"). |
 | **Accessibility** | Full VoiceOver coverage; keyboard-only is the primary path; respects Reduce Motion and the system appearance. |
-| **Platform** | macOS 26+ (Baton's floor), Apple silicon and Intel. |
+| **Platform** | macOS 26+ (Baton's floor), Apple silicon only: macOS 26 is the last release for Intel Macs. |
 
 **API budget (from documented limits and first-hand tests, 2026-10-03):**
 

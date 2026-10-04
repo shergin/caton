@@ -1,6 +1,6 @@
 #!/bin/sh
 # Cuts a release of the version in Sources/Caton/App/AppInfo.swift: tests,
-# builds the universal app, zips it into build/ and writes the cask with its
+# builds the app, zips it into build/ and writes the cask with its
 # sha256 to build/caton.rb.
 #
 # With --publish it then tags v<version>, creates the GitHub Release with the
@@ -47,7 +47,7 @@ previous=$(git describe --tags --abbrev=0 2>/dev/null || true)
 notes=build/release-notes.md
 {
   if [ -n "$previous" ]; then
-    git log --reverse --pretty='- %s' "$previous..HEAD"
+    git log --reverse --invert-grep --grep='^Record v' --pretty='- %s' "$previous..HEAD"
   else
     echo "The first release of Caton."
   fi
