@@ -106,7 +106,7 @@ struct PullRequestFactsReader {
           author { login url avatarUrl }
           statusCheckRollup { state }
           viewerLatestReview { state }
-          comments(last: 1) { nodes { author { login url } } }
+          comments(last: 1) { nodes { author { login url } createdAt } }
           viewerLatestReviewRequest {
             requestedReviewer {
               ... on User { id }
@@ -149,7 +149,8 @@ struct PullRequestFactsReader {
             viewerDidAuthor: pullRequest.viewerDidAuthor,
             pendingReviewRequest: request,
             viewerLatestReview: pullRequest.viewerLatestReview.flatMap { SubjectFacts.ReviewState(graphQL: $0.state) },
-            latestCommenter: pullRequest.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) }
+            latestCommenter: pullRequest.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) },
+            latestCommentAt: pullRequest.comments.nodes?.last.flatMap { try? Date($0.createdAt, strategy: .iso8601) }
         )
     }
 }
@@ -164,7 +165,7 @@ struct IssueFactsReader {
           stateReason
           viewerDidAuthor
           author { login url avatarUrl }
-          comments(last: 1) { nodes { author { login url } } }
+          comments(last: 1) { nodes { author { login url } createdAt } }
         }
         """)
     var issue: IssueFacts_issue
@@ -176,7 +177,8 @@ struct IssueFactsReader {
             closedReason: issue.stateReason.flatMap(SubjectFacts.ClosedReason.init(graphQL:)),
             author: issue.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/"), avatarURL: URL(string: $0.avatarUrl)) },
             viewerDidAuthor: issue.viewerDidAuthor,
-            latestCommenter: issue.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) }
+            latestCommenter: issue.comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) },
+            latestCommentAt: issue.comments.nodes?.last.flatMap { try? Date($0.createdAt, strategy: .iso8601) }
         )
     }
 }

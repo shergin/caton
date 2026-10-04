@@ -84,6 +84,8 @@ final class AppModel {
     var searchQuery = "" { didSet { reselect() } }
     var isSearching = false
     var overlay: Overlay = .none
+    /// The snooze picker's mode: come back only if nothing happens.
+    var snoozeOnlyIfQuiet = false
     /// A `g` waiting for its second key.
     @ObservationIgnored var pendingG = false
     var unreadOnly = false { didSet { reselect() } }
@@ -117,7 +119,8 @@ final class AppModel {
     @ObservationIgnored private(set) var subjects: SubjectStore?
     @ObservationIgnored var dispatchTask: Task<Void, Never>?
     @ObservationIgnored var undoStack: [UndoEntry] = []
-    @ObservationIgnored var wokenSnoozes: Set<String> = []
+    /// Snoozes that ended this session, and why, so the note outlives the snooze.
+    @ObservationIgnored var wokenSnoozes: [String: Resurfacing] = [:]
     @ObservationIgnored var repositoryOrder: [String] = []
     @ObservationIgnored var selectedIndexHint = 0
     /// No change reaches GitHub; for development against a real account.
@@ -290,7 +293,7 @@ final class AppModel {
         subjects?.releaseAll()
         alertsArmed = false
         let governor = RateGovernor()
-        let image = Persistence(url: AppPaths.caches.appending(path: "subjects-\(viewer.login).sqlite"), version: "2")
+        let image = Persistence(url: AppPaths.caches.appending(path: "subjects-\(viewer.login).sqlite"), version: "3")
         let environment = Baton.Environment(transport: GraphTransport(token: token, governor: governor), store: Store(persistence: image))
         environment.releaseBufferSize = 50
         let subjects = SubjectStore(environment: environment, viewerID: viewer.nodeID, fetchedActivity: fetchedActivity)
@@ -424,14 +427,14 @@ final class AppModel {
             applyRuleClears(next.autoClears, now: now)
             next = InboxProjection.project(threads: allThreads, facts: { [subjects] in subjects?.facts(for: $0) }, state: state, now: now)
         }
-        for id in next.wokenSnoozes {
+        for (id, why) in next.wokenSnoozes {
             state.snoozes[id] = nil
-            wokenSnoozes.insert(id)
+            wokenSnoozes[id] = why
         }
         for split in Split.allCases {
             guard var items = next.splits[split] else { continue }
-            for index in items.indices where items[index].resurfacing == nil && wokenSnoozes.contains(items[index].id) {
-                items[index].resurfacing = .snoozeEnded
+            for index in items.indices where items[index].resurfacing == nil {
+                items[index].resurfacing = wokenSnoozes[items[index].id]
             }
             next.splits[split] = items
         }

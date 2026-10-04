@@ -1,19 +1,48 @@
 import Foundation
 
-/// Why a thread the user took away is back.
+/// Why a thread the user took away is back, as specific as the facts allow.
 public enum Resurfacing: Hashable, Sendable {
-    case afterDone
-    case afterUnsubscribe
-    case afterRule(Rule)
+    case reRequested
+    case changesRequested
+    case checksFailed
+    case approved
+    case comment(by: String)
+    /// Unsubscribed, and GitHub notified the user anyway: a mention, an
+    /// assignment or a review request.
+    case askedAgain
+    case activity
     case snoozeEnded
+    /// A snooze that waited for silence ended, and nothing happened.
+    case noActivity
 
     public var note: String {
         switch self {
-        case .afterDone: "back: new activity since done"
-        case .afterUnsubscribe: "back: you were asked again"
-        case .afterRule: "back: new activity"
+        case .reRequested: "back: re-requested"
+        case .changesRequested: "back: changes requested"
+        case .checksFailed: "back: checks failed"
+        case .approved: "back: approved"
+        case .comment(let login): "back: new comment by @\(login)"
+        case .askedAgain: "back: you were asked again"
+        case .activity: "back: new activity"
         case .snoozeEnded: "back: snooze ended"
+        case .noActivity: "back: no reply yet"
         }
+    }
+
+    /// Why activity after `since` brought a thread back, read from what the
+    /// thread is now: the most specific change first.
+    public static func newActivity(since: Date, badge: Badge, facts: SubjectFacts?, afterUnsubscribe: Bool = false) -> Resurfacing {
+        switch badge {
+        case .reviewYou: return .reRequested
+        case .yourPullRequest(.changesRequested): return .changesRequested
+        case .yourPullRequest(.checksFailed): return .checksFailed
+        case .yourPullRequest(.readyToMerge): return .approved
+        default: break
+        }
+        if let facts, let at = facts.latestCommentAt, at > since, let commenter = facts.latestCommenter {
+            return .comment(by: commenter.login)
+        }
+        return afterUnsubscribe ? .askedAgain : .activity
     }
 }
 
@@ -41,8 +70,8 @@ public struct InboxSnapshot: Equatable, Sendable {
     public var later: [InboxItem] = []
     /// Threads rules clear on this pass; the app enqueues them.
     public var autoClears: [AutoClear] = []
-    /// Snoozes that ended on this pass; the app forgets them.
-    public var wokenSnoozes: [String] = []
+    /// Snoozes that ended on this pass, with why; the app forgets them.
+    public var wokenSnoozes: [String: Resurfacing] = [:]
 
     public init() {}
 
@@ -67,18 +96,15 @@ public enum InboxProjection {
         for thread in threads {
             if state.queue.hides(threadID: thread.id, activity: thread.updatedAt) { continue }
 
+            let subjectFacts = facts(thread)
+            let classification = Classifier.classify(thread, facts: subjectFacts, settings: state.settings)
+
             var resurfacing: Resurfacing?
             if let dismissal = state.dismissals[thread.id] {
                 if thread.updatedAt <= dismissal.activity { continue }
-                switch dismissal.cause {
-                case .done: resurfacing = .afterDone
-                case .unsubscribe, .ignore: resurfacing = .afterUnsubscribe
-                case .rule(let rule): resurfacing = .afterRule(rule)
-                }
+                let unsubscribed = dismissal.cause == .unsubscribe || dismissal.cause == .ignore
+                resurfacing = .newActivity(since: dismissal.activity, badge: classification.badge, facts: subjectFacts, afterUnsubscribe: unsubscribed)
             }
-
-            let subjectFacts = facts(thread)
-            let classification = Classifier.classify(thread, facts: subjectFacts, settings: state.settings)
 
             if let rule = classification.clearedBy {
                 let exempt = state.ruleExemptions[thread.id].map { thread.updatedAt <= $0 } ?? false
@@ -93,13 +119,17 @@ public enum InboxProjection {
             var item = InboxItem(thread: thread, classification: classification, isUnread: isUnread, resurfacing: resurfacing)
 
             if let snooze = state.snoozes[thread.id] {
-                let woke = now >= snooze.until || (thread.updatedAt > snooze.activity && classification.split == .needsMe)
-                if !woke {
+                if let woke = snooze.wake(thread: thread, split: classification.split, now: now) {
+                    let why: Resurfacing = switch woke {
+                    case .time: snooze.onlyIfQuiet ? .noActivity : .snoozeEnded
+                    case .activity: .newActivity(since: snooze.activity, badge: classification.badge, facts: subjectFacts)
+                    }
+                    snapshot.wokenSnoozes[thread.id] = why
+                    item.resurfacing = why
+                } else {
                     snapshot.snoozed.append(item)
                     continue
                 }
-                snapshot.wokenSnoozes.append(thread.id)
-                item.resurfacing = .snoozeEnded
             }
 
             if state.later[thread.id] != nil {

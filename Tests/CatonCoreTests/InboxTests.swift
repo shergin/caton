@@ -83,7 +83,33 @@ struct InboxProjectionTests {
         state.dismissals["1"] = Dismissal(cause: .done, activity: reference, at: reference)
         #expect(project([makeThread(id: "1", reason: .mention)], state: state).count(.needsMe) == 0)
         let later = project([makeThread(id: "1", reason: .mention, updatedAt: reference.addingTimeInterval(60))], state: state)
-        #expect(later.items(in: .needsMe).first?.resurfacing == .afterDone)
+        #expect(later.items(in: .needsMe).first?.resurfacing == .activity)
+    }
+
+    @Test func a_returning_thread_names_what_changed() {
+        var state = LocalState()
+        state.dismissals["1"] = Dismissal(cause: .done, activity: reference, at: reference)
+        let newer = reference.addingTimeInterval(60)
+        let reRequested = project([makeThread(id: "1", reason: .reviewRequested, updatedAt: newer)], facts: ["1": makeFacts(pendingReviewRequest: .you)], state: state)
+        #expect(reRequested.items(in: .needsMe).first?.resurfacing == .reRequested)
+        let failing = project([makeThread(id: "1", reason: .author, updatedAt: newer)], facts: ["1": makeFacts(checks: .failure, viewerDidAuthor: true)], state: state)
+        #expect(failing.items(in: .needsMe).first?.resurfacing == .checksFailed)
+        var commented = makeFacts()
+        commented.latestCommenter = SubjectActor(login: "hubot", isApp: false)
+        commented.latestCommentAt = newer
+        let comment = project([makeThread(id: "1", reason: .comment, updatedAt: newer)], facts: ["1": commented], state: state)
+        #expect(comment.items(in: .following).first?.resurfacing == .comment(by: "hubot"))
+        #expect(comment.items(in: .following).first?.resurfacing?.note == "back: new comment by @hubot")
+    }
+
+    @Test func a_comment_from_before_the_dismissal_is_not_the_news() {
+        var state = LocalState()
+        state.dismissals["1"] = Dismissal(cause: .unsubscribe, activity: reference, at: reference)
+        var facts = makeFacts()
+        facts.latestCommenter = SubjectActor(login: "hubot", isApp: false)
+        facts.latestCommentAt = reference.addingTimeInterval(-60)
+        let snapshot = project([makeThread(id: "1", reason: .mention, updatedAt: reference.addingTimeInterval(60))], facts: ["1": facts], state: state)
+        #expect(snapshot.items(in: .needsMe).first?.resurfacing == .askedAgain)
     }
 
     @Test func a_queued_done_hides_the_thread_at_once() {
@@ -120,7 +146,18 @@ struct InboxProjectionTests {
         #expect(project([makeThread(id: "1", reason: .mention)], state: state).snoozed.count == 1)
         let after = project([makeThread(id: "1", reason: .mention)], state: state, now: reference.addingTimeInterval(3600))
         #expect(after.items(in: .needsMe).first?.resurfacing == .snoozeEnded)
-        #expect(after.wokenSnoozes == ["1"])
+        #expect(after.wokenSnoozes == ["1": .snoozeEnded])
+    }
+
+    @Test func a_follow_up_snooze_comes_back_on_any_activity_or_says_nothing_happened() {
+        var state = LocalState()
+        state.snoozes["1"] = Snooze(until: reference.addingTimeInterval(3600), activity: reference, onlyIfQuiet: true)
+        let thread = makeThread(id: "1", reason: .author)
+        #expect(project([thread], facts: ["1": makeFacts(viewerDidAuthor: true)], state: state).snoozed.count == 1)
+        let quiet = project([thread], facts: ["1": makeFacts(viewerDidAuthor: true)], state: state, now: reference.addingTimeInterval(3600))
+        #expect(quiet.items(in: .following).first?.resurfacing == .noActivity)
+        let answered = project([makeThread(id: "1", reason: .author, updatedAt: reference.addingTimeInterval(5))], facts: ["1": makeFacts(viewerDidAuthor: true)], state: state)
+        #expect(answered.items(in: .following).first?.resurfacing == .activity)
     }
 
     @Test func a_snooze_ends_early_on_new_activity_that_needs_the_viewer() {
@@ -152,5 +189,13 @@ struct LocalStateTests {
         #expect(state.readMarks.count == 1)
         #expect(state.alerted.isEmpty)
         #expect(state.settings.enabledRules == [.drafts])
+    }
+
+    @Test func a_snooze_saved_before_follow_ups_decodes_as_an_ordinary_snooze() throws {
+        let json = #"{"snoozes":{"1":{"until":10,"activity":5}}}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let state = try decoder.decode(LocalState.self, from: Data(json.utf8))
+        #expect(state.snoozes["1"]?.onlyIfQuiet == false)
     }
 }

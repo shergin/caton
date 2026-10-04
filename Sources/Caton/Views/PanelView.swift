@@ -151,10 +151,7 @@ struct InboxView: View {
                                     },
                                     onToggleCheck: { model.toggleChecked(item.id) },
                                     onDone: { model.done(item.id) },
-                                    onSnooze: {
-                                        model.select(item.id)
-                                        model.overlay = .snooze
-                                    },
+                                    onSnooze: { model.beginSnooze(item.id) },
                                     onUnsubscribe: { model.unsubscribe(item.id) }
                                 )
                                 .id(item.id)
@@ -347,15 +344,15 @@ struct ClearedList: View {
 }
 
 struct SnoozePicker: View {
-    let model: AppModel
+    @Bindable var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Snooze until").font(.system(size: 12, weight: .semibold))
+            Text(model.snoozeOnlyIfQuiet ? "Remind me if nothing happens by" : "Snooze until").font(.system(size: 12, weight: .semibold))
             ForEach(SnoozeOption.all) { option in
                 Button {
                     model.overlay = .none
-                    model.snooze(until: option.date())
+                    model.snooze(until: option.date(), onlyIfQuiet: model.snoozeOnlyIfQuiet)
                 } label: {
                     HStack {
                         Text(option.key).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
@@ -365,7 +362,20 @@ struct SnoozePicker: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("Comes back early if something new needs you.").font(.system(size: 10)).foregroundStyle(.tertiary)
+            Divider()
+            Toggle(isOn: $model.snoozeOnlyIfQuiet) {
+                HStack {
+                    Text("n").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("Only if nothing happens").font(.system(size: 12))
+                }
+            }
+            .toggleStyle(.checkbox)
+            Text(model.snoozeOnlyIfQuiet
+                ? "Comes back on any new activity; at the time, only if there was none."
+                : "Comes back early if something new needs you.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(width: 240)

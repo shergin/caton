@@ -21,14 +21,41 @@ public struct Dismissal: Codable, Hashable, Sendable {
     }
 }
 
-/// A thread hidden until a time, or until new activity that needs the user.
+/// A thread hidden until a time, or until new activity. An ordinary snooze
+/// ends early only for activity that needs the user; one that waits for
+/// silence (a follow-up on the user's own pull request) ends on any activity,
+/// and at its time says nothing happened.
 public struct Snooze: Codable, Hashable, Sendable {
+    public enum Wake: Sendable {
+        case time
+        case activity
+    }
+
     public var until: Date
     public var activity: Date
+    public var onlyIfQuiet: Bool
 
-    public init(until: Date, activity: Date) {
+    public init(until: Date, activity: Date, onlyIfQuiet: Bool = false) {
         self.until = until
         self.activity = activity
+        self.onlyIfQuiet = onlyIfQuiet
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case until, activity, onlyIfQuiet
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        until = try container.decode(Date.self, forKey: .until)
+        activity = try container.decode(Date.self, forKey: .activity)
+        onlyIfQuiet = try container.decodeIfPresent(Bool.self, forKey: .onlyIfQuiet) ?? false
+    }
+
+    /// Whether, and why, the snooze is over for the thread as it is now.
+    public func wake(thread: NotificationThread, split: Split, now: Date) -> Wake? {
+        if thread.updatedAt > activity, onlyIfQuiet || split == .needsMe { return .activity }
+        return now >= until ? .time : nil
     }
 }
 

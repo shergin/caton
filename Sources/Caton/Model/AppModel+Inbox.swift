@@ -156,19 +156,22 @@ extension AppModel {
         wakeDispatcher()
     }
 
-    func snooze(_ id: String? = nil, until: Date) {
+    /// Hides the selection until a time. With `onlyIfQuiet` it comes back
+    /// on any new activity, and at the time only if nothing happened.
+    func snooze(_ id: String? = nil, until: Date, onlyIfQuiet: Bool = false) {
         let items = targets(id)
         guard !items.isEmpty else { return }
         var previous: [String: Snooze?] = [:]
         for item in items {
             previous[item.id] = state.snoozes[item.id]
-            state.snoozes[item.id] = Snooze(until: until, activity: item.thread.updatedAt)
-            wokenSnoozes.remove(item.id)
+            state.snoozes[item.id] = Snooze(until: until, activity: item.thread.updatedAt, onlyIfQuiet: onlyIfQuiet)
+            wokenSnoozes[item.id] = nil
         }
         undoStack.append(.snoozed(previous))
         checked.removeAll()
         let when = until.formatted(.relative(presentation: .named))
-        toast(items.count == 1 ? "Snoozed \(items[0].thread.reference) until \(when) · z to undo" : "Snoozed \(items.count) threads · z to undo")
+        let what = items.count == 1 ? items[0].thread.reference : "\(items.count) threads"
+        toast(onlyIfQuiet ? "Reminding about \(what) \(when) if nothing happens · z to undo" : "Snoozed \(what) until \(when) · z to undo")
         recompute()
     }
 
@@ -185,6 +188,15 @@ extension AppModel {
         checked.removeAll()
         toast(adding ? "Saved for later · z to undo" : "Removed from Later")
         recompute()
+    }
+
+    /// Opens the snooze picker. On the user's own pull request the reminder
+    /// defaults to waiting for silence: a follow-up if no one answers.
+    func beginSnooze(_ id: String? = nil) {
+        if let id { select(id) }
+        guard let item = selectedItem else { return }
+        snoozeOnlyIfQuiet = item.classification.badge == .author
+        overlay = .snooze
     }
 
     func peek() {

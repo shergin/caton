@@ -22,7 +22,7 @@ struct Command: Identifiable {
     static let all: [Command] = [
         Command("open", "Open in browser", keys: "⏎  o", closesPanel: true) { $0.open() },
         Command("done", "Done", keys: "e  d") { $0.done() },
-        Command("snooze", "Snooze…", keys: "h") { $0.overlay = .snooze },
+        Command("snooze", "Snooze…", keys: "h") { $0.beginSnooze() },
         Command("unsubscribe", "Unsubscribe (mentions still notify)", keys: "u") { $0.unsubscribe() },
         Command("ignore", "Ignore thread (never notify)", keys: "") { $0.ignore() },
         Command("later", "Save for later", keys: "b") { $0.toggleLater() },
@@ -63,9 +63,10 @@ enum KeyRouter {
         switch model.overlay {
         case .snooze:
             if event.keyCode == 53 { model.overlay = .none; return true }
+            if characters == "n" { model.snoozeOnlyIfQuiet.toggle(); return true }
             if let option = SnoozeOption.all.first(where: { $0.key == characters }) {
                 model.overlay = .none
-                model.snooze(until: option.date())
+                model.snooze(until: option.date(), onlyIfQuiet: model.snoozeOnlyIfQuiet)
             }
             return true
         case .help:
@@ -167,7 +168,7 @@ enum KeyRouter {
         case "G": model.selectLast()
         case "o": if model.open() { close() }
         case "e", "d": model.done()
-        case "h": if model.selectedID != nil { model.overlay = .snooze }
+        case "h": model.beginSnooze()
         case "u": model.unsubscribe()
         case "b": model.toggleLater()
         case "m": model.markRead()
@@ -202,6 +203,7 @@ struct SnoozeOption: Identifiable, Sendable {
         SnoozeOption(key: "2", title: "In 3 hours") { .now.addingTimeInterval(3 * 3600) },
         SnoozeOption(key: "3", title: "Tomorrow 9:00") { nextMorning(after: .now, weekday: nil) },
         SnoozeOption(key: "4", title: "Monday 9:00") { nextMorning(after: .now, weekday: 2) },
+        SnoozeOption(key: "5", title: "In a week") { nextMorning(after: .now.addingTimeInterval(6 * 24 * 3600), weekday: nil) },
     ]
 
     static func nextMorning(after date: Date, weekday: Int?) -> Date {
