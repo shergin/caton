@@ -28,6 +28,9 @@ struct Command: Identifiable {
         Command("later", "Save for later", keys: "b") { $0.toggleLater() },
         Command("read", "Mark read", keys: "m") { $0.markRead() },
         Command("select", "Select for bulk", keys: "x") { $0.toggleChecked() },
+        Command("bundle", "Open or close a Feed bundle", keys: "→  ←") { model in
+            if let bundle = model.selectedBundle { model.toggleBundle(bundle.id) } else { model.collapseSelection() }
+        },
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
         Command("peek", "Peek at the latest", keys: "p") { $0.peek() },
@@ -122,6 +125,8 @@ enum KeyRouter {
         switch event.keyCode {
         case 125: model.moveSelection(by: 1); return true
         case 126: model.moveSelection(by: -1); return true
+        case 124: model.expandSelection(); return true
+        case 123: model.collapseSelection(); return true
         case 121: model.moveSelection(by: page); return true
         case 116: model.moveSelection(by: -page); return true
         case 115: model.selectFirst(); return true

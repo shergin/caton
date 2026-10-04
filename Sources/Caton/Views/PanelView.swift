@@ -120,52 +120,63 @@ struct InboxView: View {
         case .cleared:
             ClearedList(model: model)
         default:
-            let items = model.visibleItems
-            if items.isEmpty {
-                EmptyState(section: model.section, filtered: !model.searchQuery.isEmpty || model.unreadOnly, clearedToday: model.cleared.count)
+            let rows = model.visibleRows
+            if rows.isEmpty {
+                EmptyState(model: model, filtered: !model.searchQuery.isEmpty || model.unreadOnly)
             } else {
-                list(items)
+                list(rows)
             }
         }
     }
 
-    private func list(_ items: [InboxItem]) -> some View {
-        let groups = groups(items)
+    private func list(_ rows: [ListRow]) -> some View {
         let waiting = model.section == .split(.needsMe)
+        // Threads inside a bot's bundle come from many repositories.
+        let acrossRepositories = Set(rows.flatMap { row -> [String] in
+            guard case .bundle(let bundle, true) = row, case .bot = bundle.kind else { return [] }
+            return bundle.items.map(\.id)
+        })
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(groups, id: \.title) { group in
-                        Section {
-                            ForEach(group.items) { item in
-                                ThreadRow(
-                                    item: item,
-                                    isSelected: model.selectedID == item.id,
-                                    isChecked: model.checked.contains(item.id),
-                                    showsWaiting: waiting,
-                                    showsRepository: !model.groupByRepository,
-                                    lenses: model.lenses(for: item.id),
-                                    onOpen: {
-                                        model.select(item.id)
-                                        if model.open(item.id) { close() }
-                                    },
-                                    onToggleCheck: { model.toggleChecked(item.id) },
-                                    onDone: { model.done(item.id) },
-                                    onSnooze: { model.beginSnooze(item.id) },
-                                    onUnsubscribe: { model.unsubscribe(item.id) }
-                                )
-                                .id(item.id)
-                            }
-                        } header: {
-                            if let title = group.header {
-                                Text(title)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 6)
-                                    .padding(.bottom, 2)
-                            }
+                    ForEach(rows) { row in
+                        switch row {
+                        case .header(let title):
+                            Text(title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 6)
+                                .padding(.bottom, 2)
+                        case .bundle(let bundle, let isExpanded):
+                            BundleRow(
+                                bundle: bundle,
+                                isExpanded: isExpanded,
+                                isSelected: model.selectedID == bundle.id,
+                                onToggle: { model.toggleBundle(bundle.id) },
+                                onDone: { model.done(bundle.id) }
+                            )
+                            .id(bundle.id)
+                        case .item(let item, let depth):
+                            ThreadRow(
+                                item: item,
+                                isSelected: model.selectedID == item.id,
+                                isChecked: model.checked.contains(item.id),
+                                showsWaiting: waiting,
+                                showsRepository: !model.groupByRepository || acrossRepositories.contains(item.id),
+                                lenses: model.lenses(for: item.id),
+                                onOpen: {
+                                    model.select(item.id)
+                                    if model.open(item.id) { close() }
+                                },
+                                onToggleCheck: { model.toggleChecked(item.id) },
+                                onDone: { model.done(item.id) },
+                                onSnooze: { model.beginSnooze(item.id) },
+                                onUnsubscribe: { model.unsubscribe(item.id) }
+                            )
+                            .padding(.leading, depth > 0 ? 14 : 0)
+                            .id(item.id)
                         }
                     }
                 }
@@ -175,26 +186,6 @@ struct InboxView: View {
                 proxy.scrollTo(id)
             }
         }
-    }
-
-    private struct Group {
-        let title: String
-        let header: String?
-        let items: [InboxItem]
-    }
-
-    private func groups(_ items: [InboxItem]) -> [Group] {
-        guard model.groupByRepository else { return [Group(title: "all", header: nil, items: items)] }
-        var groups: [Group] = []
-        for item in items {
-            let name = item.thread.repository.fullName
-            if let last = groups.last, last.title == name {
-                groups[groups.count - 1] = Group(title: name, header: name, items: last.items + [item])
-            } else {
-                groups.append(Group(title: name, header: name, items: [item]))
-            }
-        }
-        return groups
     }
 
     // MARK: Overlays
@@ -231,7 +222,12 @@ struct InboxView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if model.checked.isEmpty {
+            if model.checked.isEmpty, model.selectedBundle != nil {
+                Hint(key: "⏎", label: "open bundle")
+                Hint(key: "e", label: "done all")
+                Hint(key: "x", label: "select all")
+                Hint(key: "?", label: "keys")
+            } else if model.checked.isEmpty {
                 Hint(key: "e", label: "done")
                 Hint(key: "h", label: "snooze")
                 Hint(key: "u", label: "unsub")
@@ -279,14 +275,13 @@ struct SectionTab: View {
 }
 
 struct EmptyState: View {
-    let section: AppModel.Section
+    let model: AppModel
     let filtered: Bool
-    let clearedToday: Int
 
     var body: some View {
         VStack(spacing: 6) {
             Spacer()
-            if !filtered, section == .split(.needsMe) {
+            if !filtered, model.section == .split(.needsMe) {
                 // Caught up: the logo's happy cat.
                 LogoImage(size: 48)
             } else {
@@ -295,49 +290,65 @@ struct EmptyState: View {
                     .foregroundStyle(.tertiary)
             }
             Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
-            if section == .split(.needsMe), !filtered, clearedToday > 0 {
-                Text("\(clearedToday) cleared by rules this week").font(.system(size: 11)).foregroundStyle(.tertiary)
+            if !filtered, case .split = model.section, clearedToday > 0 {
+                HStack(spacing: 4) {
+                    Text("\(clearedToday) cleared by rules today").foregroundStyle(.tertiary)
+                    Button("View") { model.show(.cleared) }.buttonStyle(.link)
+                }
+                .font(.system(size: 11))
             }
             Spacer()
         }
         .frame(maxWidth: .infinity)
     }
 
+    private var clearedToday: Int {
+        model.cleared.filter { $0.rule != nil && Calendar.current.isDateInToday($0.at) }.count
+    }
+
     private var title: String {
         if filtered { return "No matches" }
-        switch section {
+        switch model.section {
         case .split(.needsMe): return "Nothing needs you"
         case .split: return "All clear"
         case .snoozed: return "Nothing snoozed"
         case .later: return "Nothing saved for later"
-        case .cleared: return "Nothing cleared"
+        case .cleared: return "Nothing cleared this week"
         }
     }
 }
 
+/// What rules and bulk clears took away this week, newest first, each with
+/// its page and a way back.
 struct ClearedList: View {
     let model: AppModel
 
     var body: some View {
         if model.cleared.isEmpty {
-            EmptyState(section: .cleared, filtered: false, clearedToday: 0)
+            EmptyState(model: model, filtered: false)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.cleared.reversed()) { entry in
                         HStack(spacing: 8) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.reference).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(entry.reference).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                                 Text(entry.title).font(.system(size: 12)).lineLimit(1)
                             }
                             Spacer()
-                            Text(entry.rule?.title ?? "Bulk").font(.system(size: 10)).foregroundStyle(.secondary)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(entry.rule?.title ?? "Bulk").font(.system(size: 10)).foregroundStyle(.secondary)
+                                Text(Age.short(Date.now.timeIntervalSince(entry.at))).font(.system(size: 10)).foregroundStyle(.tertiary)
+                            }
                             Button("Restore") { model.restore(entry) }
                                 .buttonStyle(.borderless)
                                 .font(.system(size: 11))
                         }
                         .padding(.horizontal, 12)
                         .frame(height: 40)
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.openURL(entry.webURL) }
+                        .help("Open \(entry.reference) on GitHub")
                     }
                 }
             }

@@ -34,9 +34,30 @@ extension AppModel {
             .map(\.element)
     }
 
+    /// The rows as the list draws them: headers, threads and, in Feed
+    /// without a search, bundles.
+    var visibleRows: [ListRow] {
+        let bundles = section == .split(.feed) && SearchQuery(searchQuery).isEmpty
+        return ListLayout.rows(visibleItems, groupByRepository: groupByRepository, bundles: bundles, expanded: expandedBundles) { [self] item in
+            item.classification.actorKind == .bot ? facts(for: item.thread)?.author?.login : nil
+        }
+    }
+
+    /// The ids selection moves through, in order.
+    private var selectableIDs: [String] { visibleRows.filter(\.isSelectable).map(\.id) }
+
     var needsMeCount: Int { snapshot.count(.needsMe) }
 
     var selectedItem: InboxItem? { visibleItems.first { $0.id == selectedID } }
+
+    /// The bundle the selection is on, if it is on one.
+    var selectedBundle: ThreadBundle? {
+        guard let selectedID, ThreadBundle.isBundleID(selectedID) else { return nil }
+        for row in visibleRows {
+            if case .bundle(let bundle, _) = row, bundle.id == selectedID { return bundle }
+        }
+        return nil
+    }
 
     func count(_ section: Section) -> Int {
         switch section {
@@ -64,59 +85,130 @@ extension AppModel {
         show(.split(splits[next]))
     }
 
+    /// Selects a row; a thread inside a closed bundle opens the bundle.
     func select(_ id: String) {
+        var ids = selectableIDs
+        if !ids.contains(id), let bundle = bundle(containing: id) {
+            expandedBundles.insert(bundle.id)
+            ids = selectableIDs
+        }
         selectedID = id
-        if let index = visibleItems.firstIndex(where: { $0.id == id }) { selectedIndexHint = index }
+        if let index = ids.firstIndex(of: id) { selectedIndexHint = index }
     }
 
     func moveSelection(by offset: Int) {
-        let items = visibleItems
-        guard !items.isEmpty else { return }
-        let current = items.firstIndex { $0.id == selectedID } ?? -1
-        let index = max(0, min(items.count - 1, current + offset))
-        select(items[index].id)
+        let ids = selectableIDs
+        guard !ids.isEmpty else { return }
+        let current = ids.firstIndex { $0 == selectedID } ?? -1
+        let index = max(0, min(ids.count - 1, current + offset))
+        select(ids[index])
     }
 
-    func selectFirst() { if let first = visibleItems.first { select(first.id) } }
-    func selectLast() { if let last = visibleItems.last { select(last.id) } }
+    func selectFirst() { if let first = selectableIDs.first { select(first) } }
+    func selectLast() { if let last = selectableIDs.last { select(last) } }
 
-    /// Keeps a selection on screen after the list changes: the same row, else
-    /// the row now at its old position.
+    /// Keeps a selection on screen after the list changes: the same row, the
+    /// bundle that took it in, else the row now at its old position.
     func reselect() {
-        let items = visibleItems
-        guard !items.isEmpty else {
+        let ids = selectableIDs
+        guard !ids.isEmpty else {
             selectedID = nil
             return
         }
-        if let selectedID, let index = items.firstIndex(where: { $0.id == selectedID }) {
+        if let selectedID, let index = ids.firstIndex(of: selectedID) {
             selectedIndexHint = index
             return
         }
-        let index = min(selectedIndexHint, items.count - 1)
-        selectedID = items[index].id
-        checked = checked.intersection(Set(items.map(\.id)))
+        if let selectedID, let bundle = bundle(containing: selectedID), let index = ids.firstIndex(of: bundle.id) {
+            self.selectedID = bundle.id
+            selectedIndexHint = index
+            return
+        }
+        let index = min(selectedIndexHint, ids.count - 1)
+        selectedID = ids[index]
+        checked = checked.intersection(Set(visibleItems.map(\.id)))
     }
 
+    // MARK: Bundles
+
+    /// The bundle a thread belongs to in the current layout.
+    func bundle(containing id: String) -> ThreadBundle? {
+        for row in visibleRows {
+            if case .bundle(let bundle, _) = row, bundle.items.contains(where: { $0.id == id }) { return bundle }
+        }
+        return nil
+    }
+
+    func toggleBundle(_ id: String) {
+        if expandedBundles.contains(id) { expandedBundles.remove(id) } else { expandedBundles.insert(id) }
+        selectedID = id
+        reselect()
+    }
+
+    /// Right arrow: opens the selected bundle.
+    func expandSelection() {
+        guard let bundle = selectedBundle, !expandedBundles.contains(bundle.id) else { return }
+        toggleBundle(bundle.id)
+    }
+
+    /// Left arrow: closes the selected bundle, or the bundle around the
+    /// selected thread, and selects it.
+    func collapseSelection() {
+        guard let selectedID else { return }
+        if ThreadBundle.isBundleID(selectedID) {
+            if expandedBundles.contains(selectedID) { toggleBundle(selectedID) }
+        } else if let bundle = bundle(containing: selectedID) {
+            toggleBundle(bundle.id)
+        }
+    }
+
+    /// Checks a thread for bulk verbs; on a bundle, all of its threads.
     func toggleChecked(_ id: String? = nil) {
         guard let id = id ?? selectedID else { return }
+        if ThreadBundle.isBundleID(id) {
+            guard let bundle = visibleRows.lazy.compactMap({ row -> ThreadBundle? in
+                if case .bundle(let bundle, _) = row, bundle.id == id { return bundle }
+                return nil
+            }).first else { return }
+            let ids = Set(bundle.items.map(\.id))
+            if ids.isSubset(of: checked) { checked.subtract(ids) } else { checked.formUnion(ids) }
+            return
+        }
         if checked.contains(id) { checked.remove(id) } else { checked.insert(id) }
     }
 
     func clearChecked() { checked.removeAll() }
 
-    /// The rows a verb applies to: the checked ones, else the selection.
+    /// The threads a verb applies to: the checked ones, else the selection,
+    /// which on a bundle is all of its threads.
     func targets(_ id: String? = nil) -> [InboxItem] {
         let items = visibleItems
-        if let id { return items.filter { $0.id == id } }
+        if let id {
+            if ThreadBundle.isBundleID(id) { return bundleItems(id) }
+            return items.filter { $0.id == id }
+        }
         if !checked.isEmpty { return items.filter { checked.contains($0.id) } }
+        if let selectedID, ThreadBundle.isBundleID(selectedID) { return bundleItems(selectedID) }
         return items.filter { $0.id == selectedID }
+    }
+
+    private func bundleItems(_ id: String) -> [InboxItem] {
+        for row in visibleRows {
+            if case .bundle(let bundle, _) = row, bundle.id == id { return bundle.items }
+        }
+        return []
     }
 
     // MARK: Verbs
 
     /// Opens the selection in the browser and marks it read at once.
+    /// On a bundle, opens or closes it instead, and the panel stays.
     @discardableResult
     func open(_ id: String? = nil) -> Bool {
+        if checked.isEmpty, let bundleID = id ?? selectedID, ThreadBundle.isBundleID(bundleID) {
+            toggleBundle(bundleID)
+            return false
+        }
         let items = targets(id)
         guard !items.isEmpty else { return false }
         for item in items {

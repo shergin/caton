@@ -119,6 +119,29 @@ struct AppModelTests {
         #expect(model.cleared.isEmpty)
     }
 
+    @Test func a_busy_feed_repository_is_one_row_that_done_clears_whole() {
+        load((1...5).map { thread("\($0)", reason: .subscribed, age: Double($0)) } + [thread("8", reason: .subscribed, repository: "acme/api", age: 9), thread("9")])
+        model.show(.split(.feed))
+        #expect(model.visibleRows.map(\.id) == ["bundle:repo:acme/web", "header:acme/api", "8"])
+        #expect(model.selectedID == "bundle:repo:acme/web")
+        model.done()
+        #expect(model.visibleRows.map(\.id) == ["header:acme/api", "8"])
+        #expect(model.state.queue.actions.count == 5)
+        #expect(model.needsMeCount == 1)
+    }
+
+    @Test func opening_a_bundle_shows_its_threads_and_left_closes_it() {
+        load((1...4).map { thread("\($0)", reason: .subscribed, age: Double($0)) } + [thread("8", reason: .subscribed, repository: "acme/api", age: 9)])
+        model.show(.split(.feed))
+        #expect(!model.open())
+        #expect(model.visibleRows.count == 7)
+        model.moveSelection(by: 2)
+        #expect(model.selectedID == "2")
+        model.collapseSelection()
+        #expect(model.selectedID == "bundle:repo:acme/web")
+        #expect(model.visibleRows.count == 3)
+    }
+
     @Test func tab_cycles_through_the_splits() {
         loadThree()
         model.cycleSplit(by: 1)

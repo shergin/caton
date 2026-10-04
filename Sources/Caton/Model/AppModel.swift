@@ -91,6 +91,8 @@ final class AppModel {
     @ObservationIgnored var pendingG = false
     var unreadOnly = false { didSet { reselect() } }
     var groupByRepository = true
+    /// Feed bundles the user opened.
+    var expandedBundles: Set<String> = []
     var isPanelVisible = false {
         didSet {
             guard isPanelVisible != oldValue else { return }
