@@ -46,6 +46,10 @@ struct Command: Identifiable {
         Command("later-list", "Go to Later", keys: "g l") { $0.show(.later) },
         Command("cleared", "Go to Cleared", keys: "g c") { $0.show(.cleared) },
         Command("search", "Search", keys: "/") { $0.isSearching = true },
+        Command("save-search", "Save search as a split…", keys: "") { $0.beginSavingSearch() },
+        Command("delete-search", "Delete this saved split", keys: "") { model in
+            if case .saved(let id) = model.section { model.deleteSavedSearch(id) }
+        },
         Command("unread", "Unread only", keys: "a") { $0.unreadOnly.toggle() },
         Command("group", "Group by repository", keys: "s") { $0.groupByRepository.toggle() },
         Command("refresh", "Refresh", keys: "r") { $0.refresh() },
@@ -89,7 +93,7 @@ enum KeyRouter {
         case .welcome:
             if event.keyCode == 53 || event.keyCode == 36 { model.finishWelcome(syncRuleClears: false) }
             return true
-        case .commands:
+        case .commands, .saveSearch:
             if event.keyCode == 53 { model.overlay = .none; return true }
             return false
         case .zero:
@@ -200,6 +204,10 @@ enum KeyRouter {
         case "2": model.show(.split(.team))
         case "3": model.show(.split(.following))
         case "4": model.show(.split(.feed))
+        case "5", "6", "7", "8", "9":
+            // Saved searches follow the four splits.
+            let index = Int(characters)! - 5
+            if model.savedSearches.indices.contains(index) { model.show(.saved(model.savedSearches[index].id)) }
         default: return false
         }
         return true

@@ -24,9 +24,10 @@ final class AppModel {
         case waiting(userCode: String, url: URL)
     }
 
-    /// What the list shows: a split, or one of the local views.
+    /// What the list shows: a split, a saved search, or one of the local views.
     enum Section: Hashable {
         case split(Split)
+        case saved(UUID)
         case snoozed
         case later
         case cleared
@@ -48,6 +49,7 @@ final class AppModel {
         case zero
         case why
         case tips
+        case saveSearch
     }
 
     /// The one message the status strip shows, the most urgent first.

@@ -117,6 +117,25 @@ struct SettingsView: View {
             } footer: {
                 Text("Read threads outside Needs me leave the inbox after this long, as on github.com. Needs me keeps them until they are done.")
             }
+            Section {
+                if model.savedSearches.isEmpty {
+                    Text("None yet. Search in the panel (/), then choose Save as split.").foregroundStyle(.secondary)
+                }
+                ForEach(model.savedSearches) { saved in
+                    HStack {
+                        TextField("Name", text: Binding(get: { saved.name }, set: { model.renameSavedSearch(saved.id, to: $0) }))
+                            .labelsHidden()
+                            .frame(maxWidth: 140)
+                        Text(saved.query).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer()
+                        Button("Delete") { model.deleteSavedSearch(saved.id) }
+                    }
+                }
+            } header: {
+                Text("Saved searches")
+            } footer: {
+                Text("Each shows as a split after Feed, across all four splits, on keys 5 to 9.")
+            }
             LoginSection(model: model, list: .bots, title: "Bot accounts",
                          footer: "GitHub Apps and logins ending in -bot, _bot, robot or [bot] count as bots already. Add machine users named otherwise.")
             LoginSection(model: model, list: .aiReviewers, title: "AI reviewers",

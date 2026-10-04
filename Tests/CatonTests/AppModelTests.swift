@@ -156,6 +156,22 @@ struct AppModelTests {
         #expect(model.countsSummary == "1 needs you · 1 team · 0 following · 1 feed")
     }
 
+    @Test func a_saved_search_becomes_a_split_across_all_four() {
+        load([thread("1", repository: "acme/web"), thread("2", reason: .subscribed, repository: "acme/web"), thread("3", repository: "acme/api")])
+        model.searchQuery = "repo:web"
+        model.beginSavingSearch()
+        #expect(model.overlay == .saveSearch)
+        model.saveSearch(named: "Web")
+        guard case .saved(let id) = model.section else { Issue.record("not on the saved split"); return }
+        #expect(model.searchQuery.isEmpty)
+        #expect(Set(model.visibleItems.map(\.id)) == ["1", "2"])
+        #expect(model.count(.saved(id)) == 2)
+        model.cycleSplit(by: 1)
+        #expect(model.section == .split(.needsMe))
+        model.deleteSavedSearch(id)
+        #expect(model.tabs.count == 4)
+    }
+
     @Test func tab_cycles_through_the_splits() {
         loadThree()
         model.cycleSplit(by: 1)

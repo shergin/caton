@@ -10,6 +10,7 @@ extension AppModel {
         var items: [InboxItem]
         switch section {
         case .split(let split): items = snapshot.items(in: split)
+        case .saved(let id): items = savedItems(id)
         case .snoozed: items = snapshot.snoozed
         case .later: items = snapshot.later
         case .cleared: items = []
@@ -62,6 +63,7 @@ extension AppModel {
     func count(_ section: Section) -> Int {
         switch section {
         case .split(let split): snapshot.count(split)
+        case .saved(let id): savedItems(id).count
         case .snoozed: snapshot.snoozed.count
         case .later: snapshot.later.count
         case .cleared: cleared.count
@@ -78,11 +80,69 @@ extension AppModel {
         reselect()
     }
 
+    /// The tabs in order: the four splits, then saved searches.
+    var tabs: [Section] { Split.allCases.map { .split($0) } + savedSearches.map { .saved($0.id) } }
+
     func cycleSplit(by offset: Int) {
-        let splits = Split.allCases
-        let current: Int = if case .split(let split) = section { splits.firstIndex(of: split) ?? 0 } else { -1 }
-        let next = (current + offset + splits.count) % splits.count
-        show(.split(splits[next]))
+        let tabs = tabs
+        let current = tabs.firstIndex(of: section) ?? -1
+        let next = ((current + offset) % tabs.count + tabs.count) % tabs.count
+        show(tabs[next])
+    }
+
+    // MARK: Saved searches
+
+    var savedSearches: [SavedSearch] {
+        _ = settingsVersion
+        return state.savedSearches
+    }
+
+    func savedSearch(_ id: UUID) -> SavedSearch? { savedSearches.first { $0.id == id } }
+
+    /// Every thread in the four splits that the saved query matches.
+    private func savedItems(_ id: UUID) -> [InboxItem] {
+        guard let saved = state.savedSearches.first(where: { $0.id == id }) else { return [] }
+        let query = SearchQuery(saved.query)
+        return Split.allCases.flatMap { snapshot.items(in: $0) }.filter { query.matches($0, facts: facts(for: $0.thread)) }
+    }
+
+    /// Asks for a name for the current search.
+    func beginSavingSearch() {
+        guard !SearchQuery(searchQuery).isEmpty else {
+            toast("Type a search first (/), then save it")
+            return
+        }
+        isSearching = false
+        overlay = .saveSearch
+    }
+
+    /// Keeps the current search as a split and shows it.
+    func saveSearch(named name: String) {
+        overlay = .none
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        let name = name.trimmingCharacters(in: .whitespaces)
+        let saved = SavedSearch(name: name.isEmpty ? query : name, query: query)
+        state.savedSearches.append(saved)
+        searchQuery = ""
+        settingsVersion += 1
+        save()
+        show(.saved(saved.id))
+        toast("Saved \(saved.name) as a split")
+    }
+
+    func renameSavedSearch(_ id: UUID, to name: String) {
+        guard let index = state.savedSearches.firstIndex(where: { $0.id == id }), !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        state.savedSearches[index].name = name
+        settingsVersion += 1
+        save()
+    }
+
+    func deleteSavedSearch(_ id: UUID) {
+        state.savedSearches.removeAll { $0.id == id }
+        settingsVersion += 1
+        save()
+        if section == .saved(id) { show(.split(.needsMe)) }
     }
 
     /// Selects a row; a thread inside a closed bundle opens the bundle.

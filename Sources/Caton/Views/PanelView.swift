@@ -68,11 +68,26 @@ struct InboxView: View {
                 .help("Commands")
             }
             HStack(spacing: 4) {
-                ForEach(Split.allCases, id: \.self) { split in
-                    SectionTab(title: split.title, count: model.snapshot.count(split), isSelected: model.section == .split(split), isPrimary: split == .needsMe) {
-                        model.show(.split(split))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(Split.allCases, id: \.self) { split in
+                            SectionTab(title: split.title, count: model.snapshot.count(split), isSelected: model.section == .split(split), isPrimary: split == .needsMe) {
+                                model.show(.split(split))
+                            }
+                        }
+                        // Saved searches, as splits of their own.
+                        ForEach(model.savedSearches) { saved in
+                            SectionTab(title: saved.name, count: model.count(.saved(saved.id)), isSelected: model.section == .saved(saved.id), isPrimary: false) {
+                                model.show(.saved(saved.id))
+                            }
+                            .contextMenu {
+                                Button("Delete \(saved.name)") { model.deleteSavedSearch(saved.id) }
+                            }
+                            .help(saved.query)
+                        }
                     }
                 }
+                .scrollBounceBehavior(.basedOnSize)
                 Spacer(minLength: 0)
                 Menu {
                     Button("Snoozed (\(model.count(.snoozed)))") { model.show(.snoozed) }
@@ -108,6 +123,11 @@ struct InboxView: View {
                     model.searchQuery = ""
                     model.isSearching = false
                 }
+            if !model.searchQuery.isEmpty, case .split = model.section {
+                Button("Save as split") { model.beginSavingSearch() }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
@@ -217,6 +237,8 @@ struct InboxView: View {
         case .tips:
             TipsCard()
                 .onTapGesture { model.dismissTips() }
+        case .saveSearch:
+            SaveSearchPrompt(model: model)
         case .welcome:
             if let welcome = model.welcome {
                 ZStack {
@@ -320,6 +342,7 @@ struct EmptyState: View {
         switch model.section {
         case .split(.needsMe): return "Nothing needs you"
         case .split: return "All clear"
+        case .saved(let id): return "Nothing matches \(model.savedSearch(id)?.query ?? "this search")"
         case .snoozed: return "Nothing snoozed"
         case .later: return "Nothing saved for later"
         case .cleared: return "Nothing cleared this week"
@@ -403,6 +426,35 @@ struct SnoozePicker: View {
         .frame(width: 240)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .shadow(radius: 8)
+    }
+}
+
+/// Names the current search before it becomes a split.
+struct SaveSearchPrompt: View {
+    let model: AppModel
+    @State private var name = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Save search as a split").font(.system(size: 12, weight: .semibold))
+            Text(model.searchQuery).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(2)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($focused)
+                .onSubmit { model.saveSearch(named: name) }
+            HStack {
+                Spacer()
+                Button("Cancel") { model.overlay = .none }
+                Button("Save") { model.saveSearch(named: name) }.keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(width: 300)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .shadow(radius: 8)
+        .onAppear { focused = true }
     }
 }
 

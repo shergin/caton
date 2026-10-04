@@ -82,6 +82,19 @@ public struct ClearedEntry: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// A search kept as a split of its own.
+public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var name: String
+    public var query: String
+
+    public init(id: UUID = UUID(), name: String, query: String) {
+        self.id = id
+        self.name = name
+        self.query = query
+    }
+}
+
 /// What was cleared on one day, for the local-only stats.
 public struct Tally: Codable, Hashable, Sendable {
     /// Threads rules cleared.
@@ -114,6 +127,7 @@ public struct LocalState: Codable, Hashable, Sendable {
     public var alerted: [String: Date] = [:]
     /// Clears per day (`yyyy-MM-dd`), kept two weeks. Never leaves the Mac.
     public var tallies: [String: Tally] = [:]
+    public var savedSearches: [SavedSearch] = []
 
     public static let clearedRetention: TimeInterval = 7 * 24 * 3600
     public static let dismissalRetention: TimeInterval = 30 * 24 * 3600
@@ -121,7 +135,7 @@ public struct LocalState: Codable, Hashable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case dismissals, readMarks, snoozes, later, cleared, ruleExemptions, settings, queue, alerted, tallies
+        case dismissals, readMarks, snoozes, later, cleared, ruleExemptions, settings, queue, alerted, tallies, savedSearches
     }
 
     /// Reads documents written by earlier versions: a missing key is empty.
@@ -137,6 +151,7 @@ public struct LocalState: Codable, Hashable, Sendable {
         queue = try container.decodeIfPresent(ActionQueue.self, forKey: .queue) ?? ActionQueue()
         alerted = try container.decodeIfPresent([String: Date].self, forKey: .alerted) ?? [:]
         tallies = try container.decodeIfPresent([String: Tally].self, forKey: .tallies) ?? [:]
+        savedSearches = try container.decodeIfPresent([SavedSearch].self, forKey: .savedSearches) ?? []
     }
 
     /// Counts clears for the day of `now`.
