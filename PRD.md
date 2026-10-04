@@ -203,11 +203,19 @@ viewer's open pull requests, state-based, grouped by whose move it is:
 | **Waiting on others** | waiting on @alex and @acme/web · 3d · approved, checks running · checks running · in the merge queue |
 | **Drafts** | draft |
 
-It is read-only. Return opens, `y` copies the link, and `h` sets a
-**reminder**: if nobody else has reviewed or commented by then, the pull
-request joins Needs me as "Follow up" with "back: no reply yet"; an answer
-before then ends the reminder silently, since the answer arrives as a
-notification anyway. One GraphQL query (about 7 points for 30 pull
+Return opens, `y` copies the link, and `h` sets a **reminder**: if nobody
+else has reviewed or commented by then, the pull request joins Needs me as
+"Follow up" with "back: no reply yet"; an answer before then ends the
+reminder silently, since the answer arrives as a notification anyway.
+
+Two writes close the loop, both the author's own nudges rather than review
+or merge (still non-goals): **Nudge** (`n`, also on a Follow up row, which
+it ends) asks the reviewers again through `requestReviews`: those pending
+and those whose latest review asked for changes or only commented, people,
+teams and bots; **Ready for review** (`⇧R`) takes a draft out of draft.
+Each waits out the undo window like every verb, because a nudge notifies
+people; then the row changes at once from an optimistic response and takes
+GitHub's answer, or goes back with the error. One GraphQL query (about 7 points for 30 pull
 requests), refreshed with the orphan review-request search.
 
 It is also Caton's showcase for Baton: the screen's query, its paged
@@ -612,7 +620,7 @@ This is a demo, so these are **validation signals**, measured locally or by hand
 
 ## 17. Build status (2026-10-03)
 
-Built on Baton 0.6.0 in `Sources/`; `swift test` runs 122 tests (CatonCore and the app model).
+Built on Baton 0.6.0 in `Sources/`; `swift test` runs 128 tests (CatonCore and the app model).
 
 | Area | Status |
 |---|---|
@@ -634,6 +642,7 @@ Built on Baton 0.6.0 in `Sources/`; `swift test` runs 122 tests (CatonCore and t
 | Paced persisted queue, grace window, drain on quit | Built |
 | Search with qualifiers, unread only, grouping with stable repository order; saved searches as splits (SE-04) | Built |
 | My PRs (8.5): the viewer's open pull requests by whose move it is, reminders that join Needs me unanswered | Built; verified on a 2-PR account, and read back from Baton's image at launch |
+| Nudge and ready for review (8.5), through Baton mutations with optimistic responses | Built; tested end to end against a scripted GitHub (undo, optimistic, answer, refusal); not yet sent to the real API, for want of a pull request with reviewers to nudge |
 | Latency (section 11): a keystroke at 1,000 threads | Measured by `SpeedTests` in a release build: 0.2 ms per keystroke, 1.5 ms per letter typed into the search, 4 ms to reclassify the inbox |
 | Cmd+K command menu, `?` keymap, footer hints, hover actions, hover checkbox, three-key tip (OB-03), practice inbox (OB-05) | Built |
 | Orphan review-request search (8.3) | Built; the account used had no review requests, so only its cost (1 point) is verified |

@@ -33,7 +33,11 @@ The product thinking is in [PRD.md](PRD.md).
   [`MyPullRequestsView.swift`](Sources/Caton/Views/MyPullRequestsView.swift),
   beside the views that read them. The app model asks for the same query by
   value and so shares the view's handle, rows reuse the inbox's own
-  fragments, and the list renders from the image at launch.
+  fragments, and the list renders from the image at launch. Its two writes,
+  nudge and ready for review, are mutations in
+  [`PullRequestWrites.graphql`](Sources/Caton/Graph/PullRequestWrites.graphql)
+  with typed optimistic responses; `WriteTests` plays GitHub to show the
+  optimistic answer, the server's, and a refusal taken back.
 
 ## Running
 
@@ -109,7 +113,10 @@ Needs me.
 
 My PRs (`g p`, or the `…` menu) lists your open pull requests by whose move
 it is, with "waiting on @alex · 3d" and the like; `h` there sets a reminder
-that joins Needs me if nobody has reviewed or commented by then.
+that joins Needs me if nobody has reviewed or commented by then. `n` nudges:
+it asks the reviewers again (also from a Follow up row, which it then
+ends), and `⇧R` marks a draft ready for review. Both wait out the undo
+window, like every verb, and a dry run only says what they would do.
 
 In the snooze picker, `n` switches to a follow-up: the thread comes back on
 any new activity, and at the chosen time only if nothing happened ("back: no
