@@ -486,7 +486,9 @@ final class AppModel {
         isAddingAccount = false
         let governor = RateGovernor()
         let file = viewer.host.isDotCom ? "subjects-\(viewer.login).sqlite" : "subjects-\(AppPaths.fileName(viewer.key)).sqlite"
-        let image = Persistence(url: AppPaths.caches.appending(path: file), version: "3")
+        // Another schema starts the image again; a changed fragment does not
+        // need to: the check misses only the new fields, and they are fetched.
+        let image = Persistence(url: AppPaths.caches.appending(path: file), version: Types.schemaDigest)
         let environment = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image), releaseBufferSize: 50)
         let subjects = SubjectStore(environment: environment, viewerID: viewer.nodeID, fetchedActivity: fetchedActivity)
         subjects.onChange = { [weak self] in self?.scheduleRecompute() }

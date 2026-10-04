@@ -181,15 +181,15 @@ final class SubjectStore {
     /// The facts classification reads, once the subject is loaded.
     func facts(for thread: NotificationThread) -> SubjectFacts? {
         if let reviewRequest = reviewRequestsByThreadID[thread.id] {
-            return PullRequestFactsReader(pullRequest: reviewRequest.pullRequestFacts).facts(viewerID: viewerID)
+            return reviewRequest.pullRequestFacts.facts(viewerID: viewerID)
         }
         switch handles[thread.id] {
         case .pullRequest(let handle):
             guard case .ready(let data) = handle.phase, let pullRequest = data.repository?.pullRequest else { return nil }
-            return PullRequestFactsReader(pullRequest: pullRequest.pullRequestFacts).facts(viewerID: viewerID)
+            return pullRequest.pullRequestFacts.facts(viewerID: viewerID)
         case .issue(let handle):
             guard case .ready(let data) = handle.phase, let issue = data.repository?.issue else { return nil }
-            return IssueFactsReader(issue: issue.issueFacts).facts()
+            return issue.issueFacts.facts()
         case nil:
             return nil
         }

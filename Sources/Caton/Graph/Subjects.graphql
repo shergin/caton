@@ -1,0 +1,110 @@
+# The operations the subject store owns rather than a view, and the facts
+# the classifier reads. The views' fragments they spread (PullRequestIcon,
+# PullRequestSignals, IssueIcon, IssueSignals) live beside those views.
+#
+# A notification names its subject by repository and number, not by GraphQL
+# id, so the first fetch of each subject is one request through
+# repository(owner:name:). Once the id is known, refreshes go through
+# nodes(ids:) in batches, and both paths write the same records.
+
+query PullRequestSubjectQuery($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      id
+      ...PullRequestFacts_pullRequest
+      ...PullRequestIcon_pullRequest
+      ...PullRequestSignals_pullRequest
+    }
+  }
+}
+
+query IssueSubjectQuery($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      id
+      ...IssueFacts_issue
+      ...IssueIcon_issue
+      ...IssueSignals_issue
+    }
+  }
+}
+
+query PullRequestRefreshQuery($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      id
+      ...PullRequestFacts_pullRequest @alias
+      ...PullRequestIcon_pullRequest @alias
+      ...PullRequestSignals_pullRequest @alias
+    }
+  }
+}
+
+query IssueRefreshQuery($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Issue {
+      id
+      ...IssueFacts_issue @alias
+      ...IssueIcon_issue @alias
+      ...IssueSignals_issue @alias
+    }
+  }
+}
+
+# Open pull requests that request the viewer by name. GitHub sometimes
+# requests a review without a notification; these fill Needs me anyway.
+query ReviewRequestsQuery {
+  search(query: "is:pr is:open archived:false user-review-requested:@me", type: ISSUE, first: 50) {
+    nodes {
+      ... on PullRequest {
+        id
+        number
+        title
+        url
+        updatedAt
+        repository { name owner { login } }
+        ...PullRequestFacts_pullRequest @alias
+        ...PullRequestIcon_pullRequest @alias
+        ...PullRequestSignals_pullRequest @alias
+      }
+    }
+  }
+}
+
+# What classification reads from a pull request.
+fragment PullRequestFacts_pullRequest on PullRequest {
+  id
+  state
+  isDraft
+  isInMergeQueue
+  reviewDecision
+  viewerDidAuthor
+  author { login url avatarUrl }
+  statusCheckRollup { state }
+  viewerLatestReview { state }
+  comments(last: 1) { nodes { author { login url } createdAt } }
+  viewerLatestReviewRequest {
+    requestedReviewer {
+      ... on User { id }
+      ... on Team { id }
+    }
+  }
+  reviewRequests(first: 50) {
+    nodes {
+      requestedReviewer {
+        ... on User { id }
+        ... on Team { id }
+      }
+    }
+  }
+}
+
+# What classification reads from an issue.
+fragment IssueFacts_issue on Issue {
+  id
+  state
+  stateReason
+  viewerDidAuthor
+  author { login url avatarUrl }
+  comments(last: 1) { nodes { author { login url } createdAt } }
+}
