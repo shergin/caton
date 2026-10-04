@@ -67,6 +67,8 @@ final class AppModel {
         case snoozed([String: Snooze?])
         case later([String: Date?])
         case followUps([String: FollowUp?])
+        /// A write to a pull request still in its undo window.
+        case pullRequestWrite(String)
     }
 
     /// What the snooze picker will act on.
@@ -115,6 +117,10 @@ final class AppModel {
     /// The snooze picker's mode: come back only if nothing happens.
     var snoozeOnlyIfQuiet = false
     var snoozeTarget: SnoozeTarget = .threads
+    /// Writes to the viewer's pull requests waiting out the undo window.
+    var pendingWrites: [String: PendingWrite] = [:]
+    /// How long a write to a pull request waits for an undo; tests shorten it.
+    @ObservationIgnored var writeGrace: Duration = .seconds(AppModel.grace)
     /// A `g` waiting for its second key.
     @ObservationIgnored var pendingG = false
     var unreadOnly = false { didSet { reselect() } }
@@ -493,14 +499,20 @@ final class AppModel {
         let subjects = SubjectStore(environment: environment, viewerID: viewer.nodeID, fetchedActivity: fetchedActivity)
         subjects.onChange = { [weak self] in self?.scheduleRecompute() }
         rest = GitHubREST(token: token, host: viewer.host, governor: governor)
+        batonImage = image
+        use(environment, subjects: subjects, viewer: viewer)
+        startPolling()
+        startDispatching()
+    }
+
+    /// Shows an account's GraphQL side: Baton's environment and the subject
+    /// store over it. Tests hand in an environment over a canned transport.
+    func use(_ environment: Baton.Environment, subjects: SubjectStore, viewer: Viewer) {
         self.subjects = subjects
         graph = environment
-        batonImage = image
         account = .signedIn(viewer)
         subjects.sync(Array(threads.values))
         recompute()
-        startPolling()
-        startDispatching()
     }
 
     // MARK: Feed

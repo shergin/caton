@@ -1,0 +1,42 @@
+# The writes Caton makes to the viewer's own pull requests. Each asks for
+# exactly the fields it changes, so the store, and every row that reads
+# them, updates from GitHub's answer; the app sends an optimistic response
+# with the same shape first, which Baton shows at once and takes back if
+# GitHub refuses.
+
+# Asks reviewers again: those still pending, and those whose latest review
+# asked for changes or only commented. The answer carries who is pending
+# now and the new request's time, which "waiting on @alex · 3d" counts
+# from; the optimistic response has only the time, which is all the app
+# knows before GitHub answers.
+mutation NudgeReviewersMutation($input: RequestReviewsInput!) {
+  requestReviews(input: $input) {
+    pullRequest {
+      id
+      reviewRequests(first: 10) {
+        nodes {
+          requestedReviewer {
+            ... on Actor { login }
+            ... on Team { slug organization { login } }
+            ... on User { id }
+            ... on Team { id }
+            ... on Bot { id }
+          }
+        }
+      }
+      timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 1) {
+        nodes { ... on ReviewRequestedEvent { createdAt } }
+      }
+    }
+  }
+}
+
+# Takes a draft out of draft.
+mutation ReadyForReviewMutation($input: MarkPullRequestReadyForReviewInput!) {
+  markPullRequestReadyForReview(input: $input) {
+    pullRequest {
+      id
+      isDraft
+    }
+  }
+}

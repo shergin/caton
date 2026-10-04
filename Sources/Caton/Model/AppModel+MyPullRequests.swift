@@ -13,9 +13,11 @@ extension AppModel {
         return MyPullRequests.groups(data.viewer.myPullRequestList, now: .now).flatMap(\.nodes)
     }
 
-    private func node(_ id: String) -> MyPullRequests.Node? { myPullRequestNodes.first { $0.id == id } }
+    func myPullRequestNode(_ id: String) -> MyPullRequests.Node? { myPullRequestNodes.first { $0.id == id } }
 
-    private var viewerLogin: String {
+    private func node(_ id: String) -> MyPullRequests.Node? { myPullRequestNode(id) }
+
+    var viewerLogin: String {
         if case .signedIn(let viewer) = account { return viewer.login }
         return ""
     }

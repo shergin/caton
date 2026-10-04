@@ -55,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "tips": model.overlay = .tips
                 case "zero": model.overlay = .zero
                 case "none": model.overlay = .none
+                case "nudge":
+                    model.selectFirst()
+                    model.nudge()
                 case "remind":
                     model.selectFirst()
                     model.beginReminder()

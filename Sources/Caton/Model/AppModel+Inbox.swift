@@ -600,6 +600,8 @@ extension AppModel {
             settingsVersion += 1
             toast("Undone")
             recompute()
+        case .pullRequestWrite(let pullRequestID):
+            if !cancelWrite(pullRequestID) { toast("Already sent to GitHub") }
         }
     }
 

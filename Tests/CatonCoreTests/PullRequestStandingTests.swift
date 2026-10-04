@@ -49,6 +49,29 @@ struct PullRequestStandingTests {
         #expect(result.group == .yourMove)
     }
 
+    @Test func a_nudge_asks_pending_reviewers_and_those_who_wanted_changes() {
+        var status = PullRequestStatus(createdAt: created)
+        status.pendingReviewers = [.init(name: "alex", id: "U_alex"), .init(name: "acme/web", isTeam: true, id: "T_web"), .init(name: "ghost")]
+        status.latestReviews = [
+            .init(login: "sam", state: .changesRequested, userID: "U_sam"),
+            .init(login: "copilot-pull-request-reviewer", state: .commented, botID: "BOT_copilot"),
+            .init(login: "kai", state: .approved, userID: "U_kai"),
+            .init(login: "Alex", state: .commented, userID: "U_alex"),
+            .init(login: "me", state: .commented, userID: "U_me"),
+        ]
+        let nudge = status.nudge(excluding: "me")
+        #expect(nudge.userIDs == ["U_alex", "U_sam"])
+        #expect(nudge.teamIDs == ["T_web"])
+        #expect(nudge.botIDs == ["BOT_copilot"])
+        #expect(nudge.summary == "@alex, @acme/web, @sam and @copilot-pull-request-reviewer")
+    }
+
+    @Test func with_nobody_pending_or_waiting_to_re_review_there_is_no_nudge() {
+        var status = PullRequestStatus(createdAt: created)
+        status.latestReviews = [.init(login: "kai", state: .approved, userID: "U_kai")]
+        #expect(status.nudge(excluding: "me").isEmpty)
+    }
+
     @Test func an_answer_is_a_review_or_comment_by_someone_else() {
         var status = PullRequestStatus(createdAt: created)
         status.latestReviews = [.init(login: "me", state: .commented, at: reference)]

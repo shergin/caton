@@ -14,10 +14,17 @@ public struct PullRequestStatus: Hashable, Sendable {
     public struct Reviewer: Hashable, Sendable {
         public var name: String
         public var isTeam: Bool
+        /// An app that reviews, such as Copilot's code review.
+        public var isBot: Bool
+        /// The node id a review request names the reviewer by; none for a
+        /// mannequin, which a request cannot name again.
+        public var id: String?
 
-        public init(name: String, isTeam: Bool = false) {
+        public init(name: String, isTeam: Bool = false, isBot: Bool = false, id: String? = nil) {
             self.name = name
             self.isTeam = isTeam
+            self.isBot = isBot
+            self.id = id
         }
 
         /// `@alex`, `@acme/web`.
@@ -29,11 +36,16 @@ public struct PullRequestStatus: Hashable, Sendable {
         public var login: String
         public var state: SubjectFacts.ReviewState
         public var at: Date?
+        /// The reviewer's user or bot id, to ask them again.
+        public var userID: String?
+        public var botID: String?
 
-        public init(login: String, state: SubjectFacts.ReviewState, at: Date? = nil) {
+        public init(login: String, state: SubjectFacts.ReviewState, at: Date? = nil, userID: String? = nil, botID: String? = nil) {
             self.login = login
             self.state = state
             self.at = at
+            self.userID = userID
+            self.botID = botID
         }
     }
 
@@ -87,6 +99,38 @@ public struct PullRequestStatus: Hashable, Sendable {
         self.lastComment = lastComment
     }
 
+    /// Whom a nudge asks again: every reviewer still pending, and everyone
+    /// whose latest review asked for changes or only commented. Those who
+    /// approved are left alone, and so is the viewer.
+    public func nudge(excluding viewer: String) -> Nudge {
+        var nudge = Nudge()
+        for reviewer in pendingReviewers {
+            guard let id = reviewer.id else { continue }
+            if reviewer.isTeam {
+                nudge.teamIDs.append(id)
+            } else if reviewer.isBot {
+                nudge.botIDs.append(id)
+            } else {
+                nudge.userIDs.append(id)
+            }
+            nudge.names.append(reviewer.handle)
+        }
+        let pending = Set(pendingReviewers.map { $0.name.lowercased() })
+        for review in latestReviews where review.state == .changesRequested || review.state == .commented {
+            let login = review.login.lowercased()
+            guard !pending.contains(login), login != viewer.lowercased() else { continue }
+            if let id = review.userID, !nudge.userIDs.contains(id) {
+                nudge.userIDs.append(id)
+            } else if let id = review.botID, !nudge.botIDs.contains(id) {
+                nudge.botIDs.append(id)
+            } else {
+                continue
+            }
+            nudge.names.append("@" + review.login)
+        }
+        return nudge
+    }
+
     /// When someone other than the viewer last reviewed or commented: the
     /// answer a follow-up waits for.
     public func lastResponse(excluding viewer: String) -> Date? {
@@ -94,6 +138,29 @@ public struct PullRequestStatus: Hashable, Sendable {
         var answers = reviews
         if let lastComment, lastComment.login.caseInsensitiveCompare(viewer) != .orderedSame { answers.append(lastComment.at) }
         return answers.max()
+    }
+}
+
+/// Whom to ask again for a review, by node id, and how to name them.
+public struct Nudge: Hashable, Sendable {
+    public var userIDs: [String] = []
+    public var teamIDs: [String] = []
+    public var botIDs: [String] = []
+    /// `@alex`, `@acme/web`, in the order asked.
+    public var names: [String] = []
+
+    public init() {}
+
+    public var isEmpty: Bool { userIDs.isEmpty && teamIDs.isEmpty && botIDs.isEmpty }
+
+    /// "@alex and @acme/web".
+    public var summary: String {
+        switch names.count {
+        case 0: "nobody"
+        case 1: names[0]
+        case 2: names.joined(separator: " and ")
+        default: names.dropLast().joined(separator: ", ") + " and " + names.last!
+        }
     }
 }
 

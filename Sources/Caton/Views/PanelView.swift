@@ -283,6 +283,7 @@ struct InboxView: View {
         HStack(spacing: 8) {
             if model.section == .myPullRequests {
                 Hint(key: "⏎", label: "open")
+                Hint(key: "n", label: "nudge")
                 Hint(key: "h", label: "remind")
                 Hint(key: "y", label: "copy link")
                 Hint(key: "?", label: "keys")

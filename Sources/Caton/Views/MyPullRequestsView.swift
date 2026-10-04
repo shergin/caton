@@ -75,9 +75,12 @@ struct MyPullRequestList: View {
             pullRequest: node.myPullRequestRow,
             standing: node.pullRequestStanding,
             followUp: model.followUp(for: node.id),
+            pendingNote: model.pendingWriteNote(for: node.id),
             isSelected: model.selectedID == node.id,
             onOpen: { model.openPullRequest(node.id) },
-            onRemind: { model.beginReminder(node.id) }
+            onRemind: { model.beginReminder(node.id) },
+            onNudge: { model.nudge(node.id) },
+            onReady: { model.markReadyForReview(node.id) }
         )
         .id(node.id)
     }
@@ -138,9 +141,13 @@ struct MyPullRequestRow: View {
     var pullRequest: MyPullRequestRow_pullRequest
     let standing: PullRequestStanding_pullRequest
     let followUp: FollowUp?
+    /// A write waiting out its undo window: "asking again…".
+    let pendingNote: String?
     let isSelected: Bool
     let onOpen: () -> Void
     let onRemind: () -> Void
+    let onNudge: () -> Void
+    let onReady: () -> Void
 
     @State private var isHovered = false
 
@@ -154,7 +161,9 @@ struct MyPullRequestRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if let followUp {
+                    if let pendingNote {
+                        Text(pendingNote).foregroundStyle(Color.accentColor).lineLimit(1)
+                    } else if let followUp {
                         Label("remind \(followUp.until.formatted(.relative(presentation: .named)))", systemImage: "alarm")
                             .labelStyle(.titleAndIcon)
                             .foregroundStyle(.orange)
@@ -170,7 +179,14 @@ struct MyPullRequestRow: View {
             .layoutPriority(1)
             Spacer(minLength: 4)
             if isHovered {
-                RowButton(symbol: "alarm", help: followUp == nil ? "Remind me if nobody answers (h)" : "Change the reminder (h)", action: onRemind)
+                HStack(spacing: 2) {
+                    if pullRequest.pullRequestIcon.isDraft {
+                        RowButton(symbol: "paperplane", help: "Mark ready for review (⇧R)", action: onReady)
+                    } else {
+                        RowButton(symbol: "hand.wave", help: "Nudge: ask the reviewers again (n)", action: onNudge)
+                    }
+                    RowButton(symbol: "alarm", help: followUp == nil ? "Remind me if nobody answers (h)" : "Change the reminder (h)", action: onRemind)
+                }
             } else {
                 StandingLabel(pullRequest: standing)
             }
@@ -209,10 +225,13 @@ struct StandingLabel: View {
               requestedReviewer {
                 ... on Actor { login }
                 ... on Team { slug organization { login } }
+                ... on User { id }
+                ... on Team { id }
+                ... on Bot { id }
               }
             }
           }
-          latestReviews(first: 10) { nodes { author { login } state submittedAt } }
+          latestReviews(first: 10) { nodes { author { login ... on User { id } ... on Bot { id } } state submittedAt } }
           comments(last: 1) { nodes { author { login } createdAt } }
           timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 1) {
             nodes { ... on ReviewRequestedEvent { createdAt } }
@@ -261,13 +280,18 @@ enum MyPullRequests {
         let requests = fragment.reviewRequests?.nodes.map { Array($0) } ?? []
         let reviewers = requests.compactMap { node -> PullRequestStatus.Reviewer? in
             guard let reviewer = node.requestedReviewer else { return nil }
-            if let team = reviewer.asTeam { return .init(name: "\(team.organization.login)/\(team.slug)", isTeam: true) }
-            return reviewer.asActor.map { .init(name: $0.login) }
+            if let team = reviewer.asTeam { return .init(name: "\(team.organization.login)/\(team.slug)", isTeam: true, id: team.id) }
+            // Each condition reads what it selects: the login through Actor,
+            // the id through the concrete type a request names it by.
+            guard let login = reviewer.asActor?.login else { return nil }
+            if let bot = reviewer.asBot { return .init(name: login, isBot: true, id: bot.id) }
+            return .init(name: login, id: reviewer.asUser?.id)
         }
         let latest = fragment.latestReviews?.nodes.map { Array($0) } ?? []
         let reviews = latest.compactMap { node -> PullRequestStatus.Review? in
             guard let login = node.author?.login, let state = SubjectFacts.ReviewState(graphQL: node.state) else { return nil }
-            return PullRequestStatus.Review(login: login, state: state, at: date(node.submittedAt))
+            let author = node.author
+            return PullRequestStatus.Review(login: login, state: state, at: date(node.submittedAt), userID: author?.asUser?.id, botID: author?.asBot?.id)
         }
         let comment = fragment.comments.nodes?.last.flatMap { node -> PullRequestStatus.Comment? in
             guard let login = node.author?.login, let at = date(node.createdAt) else { return nil }

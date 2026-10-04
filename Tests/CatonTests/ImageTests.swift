@@ -20,7 +20,8 @@ struct ImageTests {
         func execute(_ request: Request) async throws -> Data { throw URLError(.notConnectedToInternet) }
     }
 
-    static let response = Data(#"""
+    /// One of the viewer's pull requests, waiting on a person and a team.
+    nonisolated static let response = Data(#"""
         {"data":{"viewer":{"login":"me","id":"U_me","pullRequests":{"totalCount":1,"edges":[{"cursor":"c1","node":{
           "__typename":"PullRequest","id":"PR_7","url":"https://github.com/acme/web/pull/7",
           "repository":{"isArchived":false,"nameWithOwner":"acme/web","id":"R_web"},
@@ -54,7 +55,7 @@ struct ImageTests {
         }
         let node = try #require(data.viewer.myPullRequestList.pullRequests.nodes.first)
         let status = MyPullRequests.status(node.pullRequestStanding)
-        #expect(status.pendingReviewers == [.init(name: "alex"), .init(name: "acme/web", isTeam: true)])
+        #expect(status.pendingReviewers == [.init(name: "alex", id: "U_alex"), .init(name: "acme/web", isTeam: true, id: "T_web")])
         #expect(PullRequestStanding.of(status).summary(now: status.requestedAt!.addingTimeInterval(2 * 86400)) == "waiting on @alex and @acme/web · 2d")
     }
 }

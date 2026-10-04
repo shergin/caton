@@ -34,6 +34,8 @@ struct Command: Identifiable {
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
         Command("peek", "Peek at the latest", keys: "p") { $0.peek() },
+        Command("nudge", "Nudge: ask the reviewers again", keys: "n") { $0.nudge() },
+        Command("ready", "Mark ready for review", keys: "⇧R") { $0.markReadyForReview() },
         Command("why", "Why is this here?", keys: "") { $0.explain() },
         Command("mute", "Mute this repository", keys: "") { $0.muteRepository() },
         Command("zero", "Get me to zero…", keys: "") { $0.overlay = .zero },
@@ -210,6 +212,8 @@ enum KeyRouter {
         case "x": model.toggleChecked()
         case "z": model.undo()
         case "y": model.copyLink()
+        case "n": model.nudge()
+        case "R": model.markReadyForReview()
         case "p": model.peek()
         case "/": model.isSearching = true
         case "a": model.unreadOnly.toggle()
