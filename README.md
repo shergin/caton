@@ -61,7 +61,7 @@ root; run it after changing those.
 
 `./scripts/bundle.sh` builds `build/Caton.app`, versioned from
 `Sources/Caton/App/AppInfo.swift`. Releases are meant to ship as a Homebrew
-cask, so `brew upgrade --cask caton` installs updates; the app checks GitHub
+cask in Caton's own tap, so `brew upgrade --cask caton` installs updates; the app checks GitHub
 Releases once a day and from "Check for Updates…" and shows that command when
 a newer version is out.
 

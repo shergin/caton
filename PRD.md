@@ -333,8 +333,8 @@ Priority: **P0** = demo must-have · **P1** = should-have · **P2** = later.
 
 | ID | Requirement | Pri |
 |---|---|---|
-| UP-01 | Developer ID–signed, notarized build. Homebrew's main cask repository only takes apps that pass Gatekeeper (since 2026-09-01). | P1 |
-| UP-02 | Distribution as a Homebrew cask; `brew upgrade` installs updates. No in-app updater: the app checks GitHub Releases and shows the upgrade command when a release is out. | P1 |
+| UP-01 | Developer ID–signed, notarized build. Not needed for our own tap; it only spares users the first-launch Gatekeeper prompt ("Open Anyway" in Privacy & Security). | P2 |
+| UP-02 | Distribution as a Homebrew cask in Caton's own tap (`brew install --cask shergin/tap/caton`), not Homebrew's main repository; `brew upgrade` installs updates. No in-app updater: the app checks GitHub Releases and shows the upgrade command when a release is out. | P1 |
 | UP-03 | Stay App Store–compatible: sandbox-safe hotkey, network-client entitlement only, Keychain. Not submitted in the demo. | P2 |
 
 ---
@@ -612,7 +612,7 @@ Built on Baton 0.6.0 in `Sources/`; `swift test` runs 106 tests (CatonCore and t
 | Banners, quiet hours, per-poll cap, morning digest (AL-04) | Built; needs the bundled app; not yet seen on screen |
 | Settings: General, Rules, Alerts, Account, Shortcuts, About (with local-only weekly stats) | Built |
 | Accessibility: row labels with state, author and age, row actions, Reduce Motion | Built; not yet audited with VoiceOver end to end |
-| Updates | Checked against GitHub Releases; the status strip, the menu and About show `brew upgrade --cask caton`. The cask itself and signed, notarized releases (UP-01, needs a Developer ID) are not set up yet |
+| Updates | Checked against GitHub Releases; the status strip, the menu and About show `brew upgrade --cask caton`. The tap, its cask and the release zips are not set up yet |
 | Multiple accounts at once (polling every account, a merged count) | Not built: one account shows at a time |
 | Spikes S1, S2 | Not run: they mutate notifications and need a sandbox account |
 | Spike S3 | Open: needs an account with direct and team review requests |
