@@ -465,7 +465,7 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 | Mirroring GitHub's Saved, custom filters, sort order | No API |
 | AI ranking that reorders or hides items | Trust; AI-summary demand is ~7 upvotes. Labels, yes; silent reordering, no |
 | Team analytics, review SLAs | Different buyer (LinearB, Faros) |
-| GHE / multiple accounts in the demo | Each needs PAT or customer-registered OAuth App; designed for, not shipped |
+| Every account at once (a merged inbox and count) | One account shows at a time; Enterprise hosts sign in with a token or the GitHub CLI, since device flow needs an OAuth App registered on each host |
 
 ---
 
