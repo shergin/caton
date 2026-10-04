@@ -60,6 +60,8 @@ struct Command: Identifiable {
         Command("detach", "Open in a window / back to the menu bar", keys: "") { model in
             model.preferences.detached ? model.attach?() : model.detach?()
         },
+        Command("switch-account", "Switch to the next account", keys: "") { $0.switchToNextAccount() },
+        Command("add-account", "Add an account…", keys: "") { $0.addAccount() },
         Command("settings", "Settings…", keys: "⌘,") { $0.openSettings?() },
         Command("updates", "Check for updates…", keys: "", closesPanel: true) { $0.checkForUpdates() },
     ]

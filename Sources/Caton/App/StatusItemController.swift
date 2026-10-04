@@ -26,6 +26,10 @@ final class StatusItemController: NSObject {
         window.onClose = { [weak self] in self?.model.preferences.detached = false }
         model.detach = { [weak self] in self?.detach() }
         model.attach = { [weak self] in self?.attach() }
+        model.revealPanel = { [weak self] in
+            guard let self, !self.model.isPanelVisible else { return }
+            self.showPanel()
+        }
         let hosting = NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() }))
         // The window decides its size; the content fits whatever it is given.
         hosting.sizingOptions = []

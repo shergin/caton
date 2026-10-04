@@ -35,7 +35,7 @@ public enum GitHubError: Error, Equatable, Sendable, LocalizedError {
         case .rateLimited(let until): "GitHub rate limit; resuming at \(until.formatted(date: .omitted, time: .shortened))."
         case .http(let status, let message): "GitHub answered \(status): \(message)"
         case .missingScopes(let scopes): "The token is missing scopes: \(scopes.joined(separator: ", "))."
-        case .untrustedURL: "GitHub returned a link outside api.github.com."
+        case .untrustedURL: "GitHub returned a link to another host."
         case .invalidResponse: "GitHub returned something unreadable."
         }
     }
@@ -88,11 +88,29 @@ public struct Viewer: Hashable, Codable, Sendable {
     public let login: String
     public let nodeID: String
     public let scopes: Set<String>
+    public let host: GitHubHost
 
-    public init(login: String, nodeID: String, scopes: Set<String>) {
+    public init(login: String, nodeID: String, scopes: Set<String>, host: GitHubHost = .dotCom) {
         self.login = login
         self.nodeID = nodeID
         self.scopes = scopes
+        self.host = host
+    }
+
+    /// Names the account among several: `github.com/octocat`.
+    public var key: String { "\(host.name)/\(login)" }
+
+    private enum CodingKeys: String, CodingKey {
+        case login, nodeID, scopes, host
+    }
+
+    /// Accounts saved before Enterprise support are github.com's.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        login = try container.decode(String.self, forKey: .login)
+        nodeID = try container.decode(String.self, forKey: .nodeID)
+        scopes = try container.decode(Set<String>.self, forKey: .scopes)
+        host = try container.decodeIfPresent(GitHubHost.self, forKey: .host) ?? .dotCom
     }
 }
 
@@ -110,6 +128,7 @@ public actor GitHubREST {
     public static let maximumPages = 20
 
     private let baseURL: URL
+    private let host: GitHubHost
     private let token: String
     private let client: any HTTPClient
     private let governor: RateGovernor
@@ -118,11 +137,12 @@ public actor GitHubREST {
     /// Seconds GitHub asks clients to wait between polls.
     public private(set) var pollInterval: TimeInterval = 60
 
-    public init(token: String, client: any HTTPClient = URLSessionHTTPClient(), governor: RateGovernor = RateGovernor(), baseURL: URL = URL(string: "https://api.github.com")!) {
+    public init(token: String, host: GitHubHost = .dotCom, client: any HTTPClient = URLSessionHTTPClient(), governor: RateGovernor = RateGovernor()) {
         self.token = token
         self.client = client
         self.governor = governor
-        self.baseURL = baseURL
+        self.host = host
+        baseURL = host.restURL
     }
 
     // MARK: Identity
@@ -143,7 +163,7 @@ public actor GitHubREST {
         if response.value(forHTTPHeaderField: "X-OAuth-Scopes") != nil, !scopes.contains("notifications"), !scopes.contains("repo") {
             throw GitHubError.missingScopes(["notifications"])
         }
-        return Viewer(login: user.login, nodeID: user.node_id, scopes: scopes)
+        return Viewer(login: user.login, nodeID: user.node_id, scopes: scopes, host: host)
     }
 
     // MARK: Feed
@@ -173,14 +193,14 @@ public actor GitHubREST {
         let (data, response) = try await send(first, allowNotModified: true)
         if response.statusCode == 304 { return nil }
         updatePollInterval(response)
-        var threads = try NotificationDecoding.threads(from: data)
+        var threads = try NotificationDecoding.threads(from: data, host: host)
         var next = try nextPageURL(response)
         var pages = 1
         while let url = next, pages < maximumPages {
             var request = URLRequest(url: url)
             authorize(&request)
             let (data, response) = try await send(request)
-            threads += try NotificationDecoding.threads(from: data)
+            threads += try NotificationDecoding.threads(from: data, host: host)
             next = try nextPageURL(response)
             pages += 1
         }
@@ -309,17 +329,19 @@ public enum NotificationDecoding {
         let repository: Repository
     }
 
-    public static func threads(from data: Data) throws -> [NotificationThread] {
+    public static func threads(from data: Data, host: GitHubHost = .dotCom) throws -> [NotificationThread] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        let payloads: [Payload]
         do {
-            return try decoder.decode([Payload].self, from: data).map(thread)
+            payloads = try decoder.decode([Payload].self, from: data)
         } catch {
             throw GitHubError.invalidResponse
         }
+        return payloads.map { thread($0, host: host) }
     }
 
-    static func thread(_ payload: Payload) -> NotificationThread {
+    static func thread(_ payload: Payload, host: GitHubHost) -> NotificationThread {
         let repository = RepositoryName(owner: payload.repository.owner.login, name: payload.repository.name)
         let kind = SubjectKind(restType: payload.subject.type)
         let number = kind.isIssueOrPullRequest ? payload.subject.url.flatMap { Int(URL(string: $0)?.lastPathComponent ?? "") } : nil
@@ -333,12 +355,14 @@ public enum NotificationDecoding {
             isUnread: payload.unread,
             updatedAt: payload.updated_at,
             lastReadAt: payload.last_read_at,
-            webURL: webURL(kind: kind, repository: repository, number: number, repositoryURL: payload.repository.html_url)
+            webURL: webURL(kind: kind, repository: repository, number: number, host: host)
         )
     }
 
-    static func webURL(kind: SubjectKind, repository: RepositoryName, number: Int?, repositoryURL: String) -> URL {
-        let base = URL(string: "https://github.com")!.appending(path: repository.owner).appending(path: repository.name)
+    /// The subject's page, built on the account's own web host rather than
+    /// taken from the payload, so a thread never links elsewhere.
+    static func webURL(kind: SubjectKind, repository: RepositoryName, number: Int?, host: GitHubHost) -> URL {
+        let base = host.webURL.appending(path: repository.owner).appending(path: repository.name)
         switch (kind, number) {
         case (.pullRequest, let number?): return base.appending(path: "pull/\(number)")
         case (.issue, let number?): return base.appending(path: "issues/\(number)")

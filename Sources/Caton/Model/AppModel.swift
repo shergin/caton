@@ -126,6 +126,8 @@ final class AppModel {
         }
     }
 
+    /// The sign-in screen is up for another account; the others stay signed in.
+    private(set) var isAddingAccount = false
     /// The practice inbox is showing in place of the account's.
     private(set) var isPractice = false
     /// The detached window is open but another window has the focus.
@@ -139,6 +141,8 @@ final class AppModel {
     /// Moves the inbox into a window, and back under the menu bar icon; set
     /// by the status item.
     @ObservationIgnored var detach: (() -> Void)?
+    /// Brings the panel (or the detached window) up; set by the status item.
+    @ObservationIgnored var revealPanel: (() -> Void)?
     @ObservationIgnored var attach: (() -> Void)?
 
     // MARK: State shared with the extensions
@@ -186,14 +190,44 @@ final class AppModel {
     // MARK: Lifecycle
 
     func start() {
+        banners.start()
+        adoptSingleAccount()
+        if let key = preferences.activeAccount ?? preferences.accounts.first?.key {
+            open(account: key)
+        } else if let token = TokenStore.environmentToken {
+            connect(token: token, host: .dotCom, expected: nil, fetchedActivity: [:])
+        }
+    }
+
+    /// Gives the token and inbox of a version with a single account to that
+    /// account by name.
+    private func adoptSingleAccount() {
+        guard preferences.accounts.isEmpty, FileManager.default.fileExists(atPath: persistence.legacyURL.path) else { return }
+        guard let viewer = persistence.load().viewer else { return }
+        if let token = TokenStore.loadLegacy() {
+            try? TokenStore.save(token, account: viewer.key)
+            TokenStore.deleteLegacy()
+        }
+        persistence.adoptLegacy(as: viewer.key)
+        preferences.accounts = [viewer]
+        preferences.activeAccount = viewer.key
+    }
+
+    /// Loads an account's saved inbox, shows it at once, and connects.
+    private func open(account key: String) {
+        persistence.use(account: key)
         let persisted = persistence.load()
         state = persisted.state
         state.queue.resumeAfterLaunch()
-        threads = Dictionary(persisted.threads.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        threads = Dictionary(persisted.threads.filter { !PracticeInbox.isPractice($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
         cleared = state.cleared
-        banners.start()
-        guard let token = TokenStore.load() else { return }
-        connect(token: token, expected: persisted.viewer, fetchedActivity: persisted.fetchedActivity)
+        let record = preferences.accounts.first { $0.key == key } ?? persisted.viewer
+        guard let token = TokenStore.environmentToken ?? TokenStore.load(account: key) else {
+            signInError = "Sign in to \(key) again."
+            account = .signedOut
+            return
+        }
+        connect(token: token, host: record?.host ?? .dotCom, expected: record, fetchedActivity: persisted.fetchedActivity)
     }
 
     /// Sends every queued action now and waits briefly, for a quit.
@@ -206,19 +240,105 @@ final class AppModel {
         persistence.saveNow(persisted())
     }
 
-    // MARK: Sign-in
+    // MARK: Accounts
 
-    func signIn(token: String) {
-        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { return }
-        connect(token: token, expected: nil, fetchedActivity: [:], save: true)
+    /// The active account's key, `github.com/octocat`.
+    var activeAccountKey: String? {
+        if case .signedIn(let viewer) = account { return viewer.key }
+        return nil
     }
 
-    func signInWithGitHubCLI() {
+    /// Shows another signed-in account's inbox. The current one's queued
+    /// changes get a moment to reach GitHub, and its inbox is saved.
+    func switchAccount(to key: String) {
+        guard key != activeAccountKey, !isPractice, preferences.accounts.contains(where: { $0.key == key }) else { return }
+        Task {
+            await setAside()
+            preferences.activeAccount = key
+            open(account: key)
+            toast("Switched to \(key)")
+        }
+    }
+
+    /// The next account in the list, for the command menu.
+    func switchToNextAccount() {
+        let keys = preferences.accounts.map(\.key)
+        guard keys.count > 1 else {
+            toast("Only one account is signed in")
+            return
+        }
+        let index = activeAccountKey.flatMap { keys.firstIndex(of: $0) } ?? -1
+        switchAccount(to: keys[(index + 1) % keys.count])
+    }
+
+    /// Shows the sign-in screen for another account, keeping this one.
+    func addAccount() {
+        Task {
+            await setAside()
+            isAddingAccount = true
+            account = .signedOut
+            revealPanel?()
+        }
+    }
+
+    /// Goes back to the account that was showing before "Add account".
+    func cancelAddingAccount() {
+        cancelSignIn()
+        isAddingAccount = false
+        if let key = preferences.activeAccount { open(account: key) }
+    }
+
+    /// Puts the current account away: changes waiting to reach GitHub get a
+    /// moment, the inbox is saved, and its tasks stop.
+    private func setAside() async {
+        if case .signedIn = account { await drain() }
+        stopAccountTasks()
+        clearInbox()
+    }
+
+    private func stopAccountTasks() {
+        pollTask?.cancel()
+        dispatchTask?.cancel()
+        dispatchTask = nil
+        subjects?.releaseAll()
+        subjects = nil
+        graph = nil
+        rest = nil
+        batonImage = nil
+        alertsArmed = false
+    }
+
+    private func clearInbox() {
+        threads.removeAll()
+        state = LocalState()
+        cleared = []
+        undoStack.removeAll()
+        wokenSnoozes.removeAll()
+        repositoryOrder = []
+        expandedBundles = []
+        snapshot = InboxSnapshot()
+        welcome = nil
+        overlay = .none
+        section = .split(.needsMe)
+        selectedID = nil
+        checked.removeAll()
+        errorMessage = nil
+        cooldownUntil = nil
+    }
+
+    // MARK: Sign-in
+
+    func signIn(token: String, host: GitHubHost = .dotCom) {
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return }
+        connect(token: token, host: host, expected: nil, fetchedActivity: [:], save: true)
+    }
+
+    func signInWithGitHubCLI(host: GitHubHost = .dotCom) {
         signInError = nil
         signInTask = Task {
             do {
-                signIn(token: try await GitHubCLI.token())
+                signIn(token: try await GitHubCLI.token(host: host), host: host)
             } catch {
                 signInError = error.localizedDescription
             }
@@ -256,33 +376,35 @@ final class AppModel {
         deviceSignIn = .idle
     }
 
+    /// Signs the active account out: its token, its saved inbox and its
+    /// cached subjects go. Another signed-in account, if any, takes its place.
     func signOut() {
-        pollTask?.cancel()
-        dispatchTask?.cancel()
-        dispatchTask = nil
-        subjects?.releaseAll()
-        subjects = nil
-        graph = nil
-        rest = nil
-        batonImage?.removeAll()
-        batonImage = nil
-        TokenStore.delete()
+        if isPractice { exitPractice() }
+        let key = activeAccountKey ?? preferences.activeAccount
+        let image = batonImage
+        stopAccountTasks()
+        image?.removeAll()
+        if let key {
+            TokenStore.delete(account: key)
+            persistence.use(account: key)
+            preferences.accounts.removeAll { $0.key == key }
+        }
         persistence.remove()
-        threads.removeAll()
-        state = LocalState()
-        cleared = []
-        undoStack.removeAll()
-        snapshot = InboxSnapshot()
-        welcome = nil
-        overlay = .none
+        clearInbox()
         account = .signedOut
-        errorMessage = nil
+        isAddingAccount = false
+        if let next = preferences.accounts.first {
+            preferences.activeAccount = next.key
+            open(account: next.key)
+        } else {
+            preferences.activeAccount = nil
+        }
     }
 
     /// Signs in with a token. At launch, with the account known from last
     /// time, the cached inbox renders at once and the token is checked behind
     /// it; a new sign-in waits for the check.
-    private func connect(token: String, expected: Viewer?, fetchedActivity: [String: Date], save: Bool = false) {
+    private func connect(token: String, host: GitHubHost, expected: Viewer?, fetchedActivity: [String: Date], save: Bool = false) {
         signInError = nil
         if let expected, !save {
             activate(token: token, viewer: expected, fetchedActivity: fetchedActivity)
@@ -291,17 +413,22 @@ final class AppModel {
         }
         Task {
             do {
-                let viewer = try await GitHubREST(token: token).viewer()
-                if save { try TokenStore.save(token) }
-                if case .signedIn(let current) = account, current.login == viewer.login { return }
-                if let expected, expected.login != viewer.login {
-                    // Another account: nothing local carries over.
-                    threads.removeAll()
-                    state = LocalState()
-                    activate(token: token, viewer: viewer, fetchedActivity: [:])
-                } else {
-                    activate(token: token, viewer: viewer, fetchedActivity: fetchedActivity)
+                let viewer = try await GitHubREST(token: token, host: host).viewer()
+                if save { try TokenStore.save(token, account: viewer.key) }
+                if case .signedIn(let current) = account, current.key == viewer.key {
+                    remember(viewer)
+                    return
                 }
+                // A new sign-in, or a token that turned out to be another
+                // account's: show that account's own saved inbox, if any.
+                stopAccountTasks()
+                persistence.use(account: viewer.key)
+                let persisted = persistence.load()
+                state = persisted.state
+                state.queue.resumeAfterLaunch()
+                threads = Dictionary(persisted.threads.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+                cleared = state.cleared
+                activate(token: token, viewer: viewer, fetchedActivity: persisted.fetchedActivity)
             } catch GitHubError.unauthorized {
                 if save {
                     signInError = GitHubError.unauthorized.localizedDescription
@@ -322,18 +449,29 @@ final class AppModel {
         }
     }
 
+    /// Records a signed-in account and makes it the active one.
+    private func remember(_ viewer: Viewer) {
+        if let index = preferences.accounts.firstIndex(where: { $0.key == viewer.key }) {
+            if preferences.accounts[index] != viewer { preferences.accounts[index] = viewer }
+        } else {
+            preferences.accounts.append(viewer)
+        }
+        if preferences.activeAccount != viewer.key { preferences.activeAccount = viewer.key }
+    }
+
     private func activate(token: String, viewer: Viewer, fetchedActivity: [String: Date]) {
-        pollTask?.cancel()
-        dispatchTask?.cancel()
-        subjects?.releaseAll()
-        alertsArmed = false
+        stopAccountTasks()
+        persistence.use(account: viewer.key)
+        remember(viewer)
+        isAddingAccount = false
         let governor = RateGovernor()
-        let image = Persistence(url: AppPaths.caches.appending(path: "subjects-\(viewer.login).sqlite"), version: "3")
-        let environment = Baton.Environment(transport: GraphTransport(token: token, governor: governor), store: Store(persistence: image))
+        let file = viewer.host.isDotCom ? "subjects-\(viewer.login).sqlite" : "subjects-\(AppPaths.fileName(viewer.key)).sqlite"
+        let image = Persistence(url: AppPaths.caches.appending(path: file), version: "3")
+        let environment = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image))
         environment.releaseBufferSize = 50
         let subjects = SubjectStore(environment: environment, viewerID: viewer.nodeID, fetchedActivity: fetchedActivity)
         subjects.onChange = { [weak self] in self?.scheduleRecompute() }
-        rest = GitHubREST(token: token, governor: governor)
+        rest = GitHubREST(token: token, host: viewer.host, governor: governor)
         self.subjects = subjects
         graph = environment
         batonImage = image
@@ -660,14 +798,17 @@ final class AppModel {
     // MARK: Persistence
 
     func save() {
-        // Practice never touches the account's saved state.
-        guard !isPractice else { return }
         persistence.save { [weak self] in self?.persisted() ?? PersistedState() }
     }
 
+    /// The account's inbox as saved. While practicing, that is the inbox set
+    /// aside, so a save that lands then never writes made-up threads.
     private func persisted() -> PersistedState {
         var viewer: Viewer?
         if case .signedIn(let signedIn) = account { viewer = signedIn }
+        if let stash = practiceStash {
+            return PersistedState(viewer: viewer, threads: Array(stash.threads.values), state: stash.state, fetchedActivity: subjects?.fetchedActivity ?? [:])
+        }
         return PersistedState(viewer: viewer, threads: Array(threads.values), state: state, fetchedActivity: subjects?.fetchedActivity ?? [:])
     }
 

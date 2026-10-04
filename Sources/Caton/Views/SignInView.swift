@@ -1,20 +1,32 @@
+import CatonCore
 import SwiftUI
 
 struct SignInView: View {
     @Bindable var model: AppModel
     @State private var token = ""
+    @State private var showsEnterprise = false
+    @State private var enterpriseHost = ""
+
+    /// github.com, or the Enterprise host typed in.
+    private var host: GitHubHost {
+        showsEnterprise ? GitHubHost(enterpriseHost) ?? .dotCom : .dotCom
+    }
 
     /// A classic token with the scopes the chosen access needs.
     private var tokenURL: URL {
         let scopes = model.preferences.access.scopes.replacingOccurrences(of: " ", with: ",")
-        return URL(string: "https://github.com/settings/tokens/new?scopes=\(scopes)&description=Caton")!
+        return URL(string: "\(host.webURL.absoluteString)/settings/tokens/new?scopes=\(scopes)&description=Caton")!
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 LogoImage(size: 40)
-                Text("Caton").font(.system(size: 20, weight: .semibold))
+                Text(model.isAddingAccount ? "Add an account" : "Caton").font(.system(size: 20, weight: .semibold))
+                Spacer()
+                if model.isAddingAccount {
+                    Button("Cancel") { model.cancelAddingAccount() }
+                }
             }
             Text("The GitHub inbox that shows only what needs you. Sign in to read your notifications; your token stays on this Mac.")
                 .font(.system(size: 12))
@@ -69,21 +81,23 @@ struct SignInView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button {
-                model.signInWithDeviceFlow()
-            } label: {
-                Label("Sign in with GitHub", systemImage: "person.badge.key").frame(maxWidth: .infinity)
+            if host.isDotCom {
+                Button {
+                    model.signInWithDeviceFlow()
+                } label: {
+                    Label("Sign in with GitHub", systemImage: "person.badge.key").frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .disabled(DeviceFlow.clientID == nil)
+                .help(DeviceFlow.clientID == nil ? "Needs an OAuth App client id (CatonGitHubClientID)" : "Opens github.com with a one-time code")
             }
-            .controlSize(.large)
-            .buttonStyle(.borderedProminent)
-            .disabled(DeviceFlow.clientID == nil)
-            .help(DeviceFlow.clientID == nil ? "Needs an OAuth App client id (CatonGitHubClientID)" : "Opens github.com with a one-time code")
 
             if GitHubCLI.executable != nil {
                 Button {
-                    model.signInWithGitHubCLI()
+                    model.signInWithGitHubCLI(host: host)
                 } label: {
-                    Label("Use my GitHub CLI login", systemImage: "terminal").frame(maxWidth: .infinity)
+                    Label(host.isDotCom ? "Use my GitHub CLI login" : "Use my GitHub CLI login for \(host.name)", systemImage: "terminal").frame(maxWidth: .infinity)
                 }
                 .controlSize(.large)
             }
@@ -93,21 +107,36 @@ struct SignInView: View {
             HStack {
                 SecureField("ghp_…", text: $token)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.signIn(token: token) }
-                Button("Sign in") { model.signIn(token: token) }
+                    .onSubmit { model.signIn(token: token, host: host) }
+                Button("Sign in") { model.signIn(token: token, host: host) }
                     .disabled(token.isEmpty)
             }
             Link("Create a token with the right scopes →", destination: tokenURL)
                 .font(.system(size: 11))
-            Divider().padding(.vertical, 2)
-            Button {
-                model.enterPractice()
-            } label: {
-                Label("Try a practice inbox first", systemImage: "graduationcap")
+            DisclosureGroup("GitHub Enterprise", isExpanded: $showsEnterprise) {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("github.acme.com or acme.ghe.com", text: $enterpriseHost)
+                        .textFieldStyle(.roundedBorder)
+                    Text(enterpriseHost.isEmpty || GitHubHost(enterpriseHost) != nil
+                        ? "Sign in with a classic token from that host, or the GitHub CLI signed in to it."
+                        : "That doesn't look like a host name.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
             }
-            .buttonStyle(.link)
-            .font(.system(size: 12))
-            .help("Made-up threads to learn the keys on; nothing reaches GitHub")
+            .font(.system(size: 11))
+            Divider().padding(.vertical, 2)
+            if !model.isAddingAccount {
+                Button {
+                    model.enterPractice()
+                } label: {
+                    Label("Try a practice inbox first", systemImage: "graduationcap")
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+                .help("Made-up threads to learn the keys on; nothing reaches GitHub")
+            }
         }
     }
 }

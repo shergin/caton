@@ -6,18 +6,20 @@ import Foundation
 /// governor with the REST client so one cooldown pauses both.
 struct GraphTransport: Transport {
     let token: String
+    let host: GitHubHost
     let governor: RateGovernor
     let session: URLSession
 
-    init(token: String, governor: RateGovernor, session: URLSession = .shared) {
+    init(token: String, host: GitHubHost = .dotCom, governor: RateGovernor, session: URLSession = .shared) {
         self.token = token
+        self.host = host
         self.governor = governor
         self.session = session
     }
 
     func execute(_ request: Request) async throws -> Data {
         try await governor.check()
-        var urlRequest = URLRequest(url: URL(string: "https://api.github.com/graphql")!)
+        var urlRequest = URLRequest(url: host.graphQLURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")

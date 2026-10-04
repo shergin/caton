@@ -189,26 +189,35 @@ struct SettingsView: View {
 
     private var account: some View {
         Form {
-            switch model.account {
-            case .signedIn(let viewer):
-                Section {
-                    LabeledContent("Signed in as", value: "@\(viewer.login)")
-                    LabeledContent("Access", value: DeviceFlow.Access(scopes: viewer.scopes).title)
-                    LabeledContent("Token scopes", value: viewer.scopes.sorted().joined(separator: ", ").nonEmpty ?? "—")
-                    Button("Sign out", role: .destructive) { model.signOut() }
-                } footer: {
-                    Text(DeviceFlow.Access(scopes: viewer.scopes).explanation + " Sign out and in again to change it. The token stays in this Mac's Keychain; signing out deletes it and everything Caton stored for the account.")
+            Section {
+                ForEach(preferences.accounts, id: \.key) { account in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("@\(account.login)")
+                            Text("\(account.host.name) · \(DeviceFlow.Access(scopes: account.scopes).title) · \(account.scopes.sorted().joined(separator: ", ").nonEmpty ?? "no scopes listed")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if model.activeAccountKey == account.key {
+                            Text("Showing").foregroundStyle(.secondary)
+                            Button("Sign out", role: .destructive) { model.signOut() }
+                        } else {
+                            Button("Show") { model.switchAccount(to: account.key) }
+                        }
+                    }
                 }
-            case .connecting:
-                Text("Signing in…")
-            case .signedOut:
-                Text("Signed out. Sign in from the menu bar panel.")
+                Button("Add account…") { model.addAccount() }
+            } header: {
+                Text("Accounts")
+            } footer: {
+                Text("One account shows at a time, with its own rules, snoozes and Cleared log; switch from the gear menu. Tokens stay in this Mac's Keychain; signing out deletes the token and everything Caton stored for that account.")
             }
             if model.dryRun {
                 Text("Dry run: nothing is sent to GitHub.").foregroundStyle(.orange)
             }
             Section("Tokens") {
-                Text("Caton signs in through its GitHub OAuth App, reuses the GitHub CLI's login, or takes a classic personal access token. GitHub's notifications API rejects fine-grained personal access tokens and GitHub App tokens, so those don't work.")
+                Text("Caton signs in through its GitHub OAuth App, reuses the GitHub CLI's login, or takes a classic personal access token; GitHub Enterprise accounts sign in with a token or the CLI. GitHub's notifications API rejects fine-grained personal access tokens and GitHub App tokens, so those don't work.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

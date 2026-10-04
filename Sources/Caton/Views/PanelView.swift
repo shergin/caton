@@ -680,12 +680,21 @@ struct SettingsMenu: View {
                 Toggle("Group by repository", isOn: $model.groupByRepository)
                 Toggle("Unread only", isOn: $model.unreadOnly)
             }
+            Section("Accounts") {
+                ForEach(model.preferences.accounts, id: \.key) { account in
+                    Toggle(account.host.isDotCom ? "@\(account.login)" : "@\(account.login) on \(account.host.name)", isOn: Binding(
+                        get: { model.activeAccountKey == account.key },
+                        set: { if $0 { model.switchAccount(to: account.key) } }
+                    ))
+                }
+                Button("Add account…") { model.addAccount() }
+                if case .signedIn(let viewer) = model.account {
+                    Button("Sign out @\(viewer.login)") { model.signOut() }
+                }
+            }
             Divider()
             Button("Settings…") { model.openSettings?() }
             Button("Refresh") { model.refresh() }
-            if case .signedIn(let viewer) = model.account {
-                Button("Sign out @\(viewer.login)") { model.signOut() }
-            }
             Button("Quit Caton") { NSApp.terminate(nil) }
         } label: {
             Image(systemName: "gearshape").font(.system(size: 11)).foregroundStyle(.secondary)

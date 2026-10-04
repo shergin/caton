@@ -1,53 +1,71 @@
 import Foundation
 import Security
 
-/// Where the token lives: the Keychain in release builds; a private file in
-/// debug builds, whose ad-hoc signature changes on every build and would make
-/// the Keychain ask again each time.
+/// Where tokens live, one per account (`github.com/octocat`): the Keychain
+/// in release builds; private files in debug builds, whose ad-hoc signature
+/// changes on every build and would make the Keychain ask again each time.
 enum TokenStore {
     private static let service = "dev.caton.Caton"
-    private static let account = "github"
+    /// The single account of versions before multiple accounts.
+    private static let legacyAccount = "github"
 
-    static func load() -> String? {
-        if let environment = ProcessInfo.processInfo.environment["CATON_GITHUB_TOKEN"], !environment.isEmpty {
-            return environment
-        }
+    /// A token from the environment, for development: it stands in for the
+    /// active account's.
+    static var environmentToken: String? {
+        ProcessInfo.processInfo.environment["CATON_GITHUB_TOKEN"]?.nonEmpty
+    }
+
+    static func load(account key: String) -> String? { read(key) }
+
+    static func save(_ token: String, account key: String) throws { try write(token, key) }
+
+    static func delete(account key: String) { remove(key) }
+
+    /// The token saved before accounts had names, for migrating it.
+    static func loadLegacy() -> String? { read(legacyAccount) }
+
+    static func deleteLegacy() { remove(legacyAccount) }
+
+    private static func read(_ account: String) -> String? {
         #if DEBUG
-        return (try? String(contentsOf: debugFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        return (try? String(contentsOf: debugFile(account), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         #else
         var result: AnyObject?
-        let status = SecItemCopyMatching(query.merging([kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]) { $1 } as CFDictionary, &result)
+        let status = SecItemCopyMatching(query(account).merging([kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]) { $1 } as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
         #endif
     }
 
-    static func save(_ token: String) throws {
+    private static func write(_ token: String, _ account: String) throws {
         #if DEBUG
-        try FileManager.default.createDirectory(at: debugFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(token.utf8).write(to: debugFile, options: [.atomic, .completeFileProtection])
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: debugFile.path)
+        let file = debugFile(account)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(token.utf8).write(to: file, options: [.atomic, .completeFileProtection])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         #else
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query.merging([kSecValueData as String: Data(token.utf8)]) { $1 } as CFDictionary, nil)
+        SecItemDelete(query(account) as CFDictionary)
+        let status = SecItemAdd(query(account).merging([kSecValueData as String: Data(token.utf8)]) { $1 } as CFDictionary, nil)
         guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
         #endif
     }
 
-    static func delete() {
+    private static func remove(_ account: String) {
         #if DEBUG
-        try? FileManager.default.removeItem(at: debugFile)
+        try? FileManager.default.removeItem(at: debugFile(account))
         #else
-        SecItemDelete(query as CFDictionary)
+        SecItemDelete(query(account) as CFDictionary)
         #endif
     }
 
-    private static var query: [String: Any] {
+    private static func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
-    private static var debugFile: URL {
-        AppPaths.support.appending(path: ".debug-token")
+    private static func debugFile(_ account: String) -> URL {
+        account == legacyAccount
+            ? AppPaths.support.appending(path: ".debug-token")
+            : AppPaths.support.appending(path: ".debug-token-\(AppPaths.fileName(account))")
     }
 }
 
@@ -58,6 +76,11 @@ enum AppPaths {
 
     static var caches: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "dev.caton.Caton", directoryHint: .isDirectory)
+    }
+
+    /// An account key as a file name: `github.com/octocat` → `github.com-octocat`.
+    static func fileName(_ key: String) -> String {
+        String(key.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" ? $0 : "-" })
     }
 }
 

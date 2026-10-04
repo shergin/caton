@@ -3,7 +3,7 @@ import Foundation
 
 /// What survives a relaunch besides Baton's image: the feed's threads, local
 /// state with its action queue, and which activity each subject was fetched
-/// for. One JSON document, written shortly after each change.
+/// for. One JSON document per account, written shortly after each change.
 struct PersistedState: Codable {
     var viewer: Viewer?
     var threads: [NotificationThread] = []
@@ -13,11 +13,36 @@ struct PersistedState: Codable {
 
 @MainActor
 final class StatePersistence {
-    private let url: URL
+    private let directory: URL
+    /// The current account's document; before one is chosen, the document
+    /// of versions with a single account.
+    private(set) var url: URL
     private var pending: Task<Void, Never>?
 
-    init(url: URL = AppPaths.support.appending(path: "state.json")) {
-        self.url = url
+    init(directory: URL = AppPaths.support) {
+        self.directory = directory
+        url = directory.appending(path: "state.json")
+    }
+
+    /// Switches to an account's document, writing out what is pending first.
+    func use(account key: String) {
+        let next = directory.appending(path: "state-\(AppPaths.fileName(key)).json")
+        guard next != url else { return }
+        if let pending {
+            pending.cancel()
+            self.pending = nil
+        }
+        url = next
+    }
+
+    /// Whether the single-account document of earlier versions exists.
+    var legacyURL: URL { directory.appending(path: "state.json") }
+
+    /// Moves the single-account document to an account's name.
+    func adoptLegacy(as key: String) {
+        let target = directory.appending(path: "state-\(AppPaths.fileName(key)).json")
+        guard FileManager.default.fileExists(atPath: legacyURL.path), !FileManager.default.fileExists(atPath: target.path) else { return }
+        try? FileManager.default.moveItem(at: legacyURL, to: target)
     }
 
     func load() -> PersistedState {
@@ -30,9 +55,10 @@ final class StatePersistence {
     /// Writes after a short pause, so a burst of changes is one write.
     func save(_ make: @escaping @MainActor () -> PersistedState) {
         pending?.cancel()
+        let url = url
         pending = Task {
             try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, url == self.url else { return }
             write(make())
         }
     }

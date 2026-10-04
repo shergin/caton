@@ -37,6 +37,9 @@ final class Preferences {
     /// A morning banner summing up what waits and what rules cleared overnight.
     var digestEnabled: Bool { didSet { defaults.set(digestEnabled, forKey: "digestEnabled") } }
     var lastDigest: Date? { didSet { defaults.set(lastDigest, forKey: "lastDigest") } }
+    /// Every signed-in account, and the one the inbox shows.
+    var accounts: [Viewer] { didSet { defaults.set(try? JSONEncoder().encode(accounts), forKey: "accounts") } }
+    var activeAccount: String? { didSet { defaults.set(activeAccount, forKey: "activeAccount") } }
     /// The inbox lives in a window rather than under the menu bar icon.
     var detached: Bool { didSet { defaults.set(detached, forKey: "detached") } }
     /// Accounts that have seen the first-sync summary.
@@ -63,6 +66,8 @@ final class Preferences {
         digestEnabled = defaults.bool(forKey: "digestEnabled")
         lastDigest = defaults.object(forKey: "lastDigest") as? Date
         detached = defaults.bool(forKey: "detached")
+        accounts = defaults.data(forKey: "accounts").flatMap { try? JSONDecoder().decode([Viewer].self, from: $0) } ?? []
+        activeAccount = defaults.string(forKey: "activeAccount")
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
         tipsShown = defaults.bool(forKey: "tipsShown")
         access = defaults.string(forKey: "access").flatMap(DeviceFlow.Access.init(rawValue:)) ?? .full

@@ -1,7 +1,9 @@
+import CatonCore
 import Foundation
 
 /// Reuses the GitHub CLI's sign-in: `gh auth token` prints an OAuth App token
-/// whose `repo` scope reads notifications.
+/// whose `repo` scope reads notifications, for github.com or an Enterprise
+/// host the CLI is signed in to.
 enum GitHubCLI {
     private static let candidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"]
 
@@ -9,12 +11,13 @@ enum GitHubCLI {
         candidates.map(URL.init(fileURLWithPath:)).first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    static func token() async throws -> String {
+    static func token(host: GitHubHost = .dotCom) async throws -> String {
         guard let executable else { throw SignInError.cliMissing }
+        let hostname = host.name
         return try await Task.detached {
             let process = Process()
             process.executableURL = executable
-            process.arguments = ["auth", "token", "--hostname", "github.com"]
+            process.arguments = ["auth", "token", "--hostname", hostname]
             let output = Pipe()
             process.standardOutput = output
             process.standardError = Pipe()

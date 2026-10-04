@@ -5,6 +5,10 @@ import Foundation
 /// for the rules. Nothing in it exists on GitHub.
 public enum PracticeInbox {
     public static let viewerLogin = "you"
+    /// Practice thread ids start with this, which no GitHub thread id does.
+    public static let idPrefix = "practice-"
+
+    public static func isPractice(_ threadID: String) -> Bool { threadID.hasPrefix(idPrefix) }
 
     public struct Entry: Sendable {
         public let thread: NotificationThread
@@ -13,7 +17,7 @@ public enum PracticeInbox {
 
     public static func entries(now: Date) -> [Entry] {
         var entries: [Entry] = []
-        var next = 9_000_000_000
+        var next = 0
         func add(
             _ repository: String, _ kind: SubjectKind, _ number: Int?, _ title: String, _ reason: Reason,
             minutesAgo: Double, unread: Bool = true, facts: SubjectFacts? = nil
@@ -23,7 +27,7 @@ public enum PracticeInbox {
             let path = kind == .pullRequest ? "pull" : "issues"
             next += 1
             let thread = NotificationThread(
-                id: String(next),
+                id: idPrefix + String(next),
                 repository: name,
                 kind: kind,
                 number: number,
@@ -41,12 +45,12 @@ public enum PracticeInbox {
             yours: Bool = false, request: SubjectFacts.ReviewRequest? = nil
         ) -> SubjectFacts {
             SubjectFacts(
-                nodeID: "PR_practice_\(next + 1)", state: state, isDraft: draft, reviewDecision: review, checks: checks,
+                nodeID: "PR_\(idPrefix)\(next + 1)", state: state, isDraft: draft, reviewDecision: review, checks: checks,
                 author: SubjectActor(login: author, isApp: isApp), viewerDidAuthor: yours, pendingReviewRequest: request
             )
         }
         func issue(_ author: String, state: SubjectFacts.State = .open) -> SubjectFacts {
-            SubjectFacts(nodeID: "I_practice_\(next + 1)", state: state, author: SubjectActor(login: author, isApp: false))
+            SubjectFacts(nodeID: "I_\(idPrefix)\(next + 1)", state: state, author: SubjectActor(login: author, isApp: false))
         }
 
         // Needs me

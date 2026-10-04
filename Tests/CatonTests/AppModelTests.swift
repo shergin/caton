@@ -20,7 +20,7 @@ struct AppModelTests {
         let opened = opened
         model = AppModel(
             preferences: Preferences(defaults: UserDefaults(suiteName: "caton-tests-\(UUID().uuidString)")!),
-            persistence: StatePersistence(url: directory.appending(path: "state.json")),
+            persistence: StatePersistence(directory: directory),
             openURL: { opened.urls.append($0) }
         )
     }
@@ -186,6 +186,49 @@ struct AppModelTests {
         #expect(model.needsMeCount == 3)
         #expect(model.visibleItems.map(\.id) == ["1", "2", "3"])
         #expect(model.state.queue.isEmpty)
+    }
+
+    @Test func each_account_keeps_its_own_saved_inbox() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "caton-accounts-\(UUID().uuidString)")
+        let persistence = StatePersistence(directory: directory)
+        var first = PersistedState()
+        first.threads = [thread("1")]
+        persistence.use(account: "github.com/a")
+        persistence.saveNow(first)
+        persistence.use(account: "github.acme.com/b")
+        #expect(persistence.load().threads.isEmpty)
+        persistence.use(account: "github.com/a")
+        #expect(persistence.load().threads.map(\.id) == ["1"])
+        #expect(persistence.url.lastPathComponent == "state-github.com-a.json")
+    }
+
+    @Test func a_single_account_inbox_moves_to_its_name() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "caton-legacy-\(UUID().uuidString)")
+        let persistence = StatePersistence(directory: directory)
+        var legacy = PersistedState()
+        legacy.threads = [thread("7")]
+        persistence.saveNow(legacy)
+        persistence.adoptLegacy(as: "github.com/a")
+        #expect(!FileManager.default.fileExists(atPath: persistence.legacyURL.path))
+        persistence.use(account: "github.com/a")
+        #expect(persistence.load().threads.map(\.id) == ["7"])
+    }
+
+    @Test func a_save_during_practice_writes_the_real_inbox() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "caton-practice-\(UUID().uuidString)")
+        let persistence = StatePersistence(directory: directory)
+        let model = AppModel(
+            preferences: Preferences(defaults: UserDefaults(suiteName: "caton-tests-\(UUID().uuidString)")!),
+            persistence: persistence,
+            openURL: { _ in }
+        )
+        model.threads = ["1": thread("1")]
+        model.recompute()
+        model.enterPractice()
+        model.done()
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(persistence.load().threads.map(\.id) == ["1"])
+        #expect(persistence.load().state.queue.isEmpty)
     }
 
     @Test func tab_cycles_through_the_splits() {
