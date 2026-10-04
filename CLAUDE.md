@@ -33,8 +33,10 @@ reach that file (`persisted()` saves the inbox set aside).
   model that needs a view's query asks for the same operation value and
   shares its handle. The schema is `schema.docs.graphql` at the root with
   `baton.json`.
-- After pulling Baton, rebuild its compiler (`../baton/scripts/build-compiler.sh`):
-  generated code from an old compiler does not match a new runtime.
+- After pulling Baton, rebuild its compiler (`../baton/scripts/build-compiler.sh`)
+  and clear the generated code, which a new compiler does not regenerate on
+  its own: `rm -rf .build/plugins/outputs/caton/Caton/destination/BatonPlugin`.
+  Code from an old compiler does not match a new runtime.
 
 ## Conventions
 
