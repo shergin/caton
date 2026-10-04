@@ -190,7 +190,33 @@ Users report review requests that are visible in search but missing from notific
 - Rules never touch Needs me.
 - Muting bot *comments* on human PRs needs the latest comment's author (an extra fetch per thread). It's a should-have pending a cost measurement.
 
-### 8.5 Inbox membership
+### 8.5 My PRs: your own pull requests while they wait
+
+The inbox is event-based, so the viewer's own pull request that has waited
+three days for a review has no new activity and never shows. My PRs is a
+local view (next to Snoozed, Later and Cleared, `g p`) that lists the
+viewer's open pull requests, state-based, grouped by whose move it is:
+
+| Group | Standings |
+|---|---|
+| **Your move** | has conflicts · checks failing · changes requested by @x · approved, ready to merge · no reviewer requested |
+| **Waiting on others** | waiting on @alex and @acme/web · 3d · approved, checks running · checks running · in the merge queue |
+| **Drafts** | draft |
+
+It is read-only. Return opens, `y` copies the link, and `h` sets a
+**reminder**: if nobody else has reviewed or commented by then, the pull
+request joins Needs me as "Follow up" with "back: no reply yet"; an answer
+before then ends the reminder silently, since the answer arrives as a
+notification anyway. One GraphQL query (about 7 points for 30 pull
+requests), refreshed with the orphan review-request search.
+
+It is also Caton's showcase for Baton: the screen's query, its paged
+connection, its rows and the standing fragment sit beside the views that
+read them; the model reaches the same query by value and shares the view's
+handle; the rows reuse the inbox's own fragments; the list renders from
+Baton's on-disk image at launch.
+
+### 8.6 Inbox membership
 
 Caton mirrors GitHub's inbox, not watched repos. A thread is in Caton when it's **unread**, or **read but not done** within a recent window (reference: 14 days of local reads plus recently read threads from the server). It's removed when it's Done (locally suppressed until `updated_at` advances, because done threads can still appear in `?all=true`), unsubscribed, rule-cleared, snoozed, or moved to Later. GitHub keeps 3 months of inbox history. Anything older exists only in Caton's local store.
 
@@ -458,7 +484,7 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 | Non-goal | Why |
 |---|---|
 | Replying, reviewing, approving, merging in-app | The browser is where work happens |
-| A PR dashboard beyond Needs me | GitHub /pulls and Graphite own it |
+| A dashboard of everyone's pull requests (a repository's, a team's) | GitHub /pulls and Graphite own it; My PRs (8.5) covers only the viewer's own, to catch what waits |
 | Other forges, Windows, Linux, mobile | Gitify's lane |
 | Servers, relays, webhooks, cross-device sync | No inbox webhook; a relay can't beat client polling |
 | Fine-grained PAT or GitHub App sign-in | The API rejects those tokens |
@@ -586,7 +612,7 @@ This is a demo, so these are **validation signals**, measured locally or by hand
 
 ## 17. Build status (2026-10-03)
 
-Built on Baton 0.6.0 in `Sources/`; `swift test` runs 106 tests (CatonCore and the app model).
+Built on Baton 0.6.0 in `Sources/`; `swift test` runs 122 tests (CatonCore and the app model).
 
 | Area | Status |
 |---|---|
@@ -607,6 +633,8 @@ Built on Baton 0.6.0 in `Sources/`; `swift test` runs 106 tests (CatonCore and t
 | Get me to zero with a count preview per option (AC-09) | Built |
 | Paced persisted queue, grace window, drain on quit | Built |
 | Search with qualifiers, unread only, grouping with stable repository order; saved searches as splits (SE-04) | Built |
+| My PRs (8.5): the viewer's open pull requests by whose move it is, reminders that join Needs me unanswered | Built; verified on a 2-PR account, and read back from Baton's image at launch |
+| Latency (section 11): a keystroke at 1,000 threads | Measured by `SpeedTests` in a release build: 0.2 ms per keystroke, 1.5 ms per letter typed into the search, 4 ms to reclassify the inbox |
 | Cmd+K command menu, `?` keymap, footer hints, hover actions, hover checkbox, three-key tip (OB-03), practice inbox (OB-05) | Built |
 | Orphan review-request search (8.3) | Built; the account used had no review requests, so only its cost (1 point) is verified |
 | Banners, quiet hours, per-poll cap, morning digest (AL-04) | Built; needs the bundled app; not yet seen on screen |

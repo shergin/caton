@@ -25,6 +25,13 @@ The product thinking is in [PRD.md](PRD.md).
   refreshes through `nodes(ids:)` in batches into the same records, and a
   relaunch classifies the inbox from Baton's on-disk image before the
   network answers.
+- **My PRs** (`g p`) is the part to read for Baton: a screen with no REST
+  behind it. Its query, a paged connection, its rows and the fragment that
+  says where a pull request stands are all in
+  [`MyPullRequestsView.swift`](Sources/Caton/Views/MyPullRequestsView.swift),
+  beside the views that read them. The app model asks for the same query by
+  value and so shares the view's handle, rows reuse the inbox's own
+  fragments, and the list renders from the image at launch.
 
 ## Running
 
@@ -97,6 +104,10 @@ and close a Feed bundle, `⌘K` commands, `⌘,` settings, `?` all keys (also in
 Settings › Shortcuts). The global shortcut is `⌘'` by default (`⌥⌘'` when
 another app holds it); a second one, off by default, opens straight into
 Needs me.
+
+My PRs (`g p`, or the `…` menu) lists your open pull requests by whose move
+it is, with "waiting on @alex · 3d" and the like; `h` there sets a reminder
+that joins Needs me if nobody has reviewed or commented by then.
 
 In the snooze picker, `n` switches to a follow-up: the thread comes back on
 any new activity, and at the chosen time only if nothing happened ("back: no
