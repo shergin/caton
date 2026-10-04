@@ -45,6 +45,7 @@ final class AppModel {
         case help
         case peek
         case welcome
+        case zero
     }
 
     /// One step undo can take back.

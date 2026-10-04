@@ -32,7 +32,7 @@ struct Command: Identifiable {
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
         Command("peek", "Peek at the latest", keys: "p") { $0.peek() },
         Command("mute", "Mute this repository", keys: "") { $0.muteRepository() },
-        Command("zero", "Get me to zero (Feed, or older than a week)", keys: "") { $0.getMeToZero() },
+        Command("zero", "Get me to zero…", keys: "") { $0.overlay = .zero },
         Command("next-split", "Next split", keys: "⇥") { $0.cycleSplit(by: 1) },
         Command("needs-me", "Go to Needs me", keys: "1") { $0.show(.split(.needsMe)) },
         Command("team", "Go to Team", keys: "2") { $0.show(.split(.team)) },
@@ -87,6 +87,10 @@ enum KeyRouter {
         case .commands:
             if event.keyCode == 53 { model.overlay = .none; return true }
             return false
+        case .zero:
+            if event.keyCode == 53 { model.overlay = .none; return true }
+            if !isRepeat, let option = model.zeroOptions.first(where: { $0.key == characters }) { model.getMeToZero(option) }
+            return true
         case .none:
             break
         }

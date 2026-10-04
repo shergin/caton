@@ -98,16 +98,19 @@ struct AppModelTests {
     }
 
     @Test func get_me_to_zero_never_clears_needs_me() {
-        loadThree()
-        model.getMeToZero()
-        #expect(model.needsMeCount == 3)
-        #expect(model.state.queue.isEmpty)
+        load([thread("1", age: 30 * 24 * 3600), thread("2", reason: .subscribed, age: 30 * 24 * 3600)])
+        let options = model.zeroOptions
+        #expect(options.allSatisfy { !$0.items.contains { $0.id == "1" } })
+        for option in options { model.getMeToZero(option) }
+        #expect(model.needsMeCount == 1)
     }
 
-    @Test func get_me_to_zero_clears_feed_and_logs_it() {
-        load([thread("1"), thread("4", reason: .subscribed), thread("5", reason: .ciActivity)])
+    @Test func get_me_to_zero_previews_its_counts_and_clears_feed_with_one_undo() {
+        load([thread("1"), thread("4", reason: .subscribed), thread("5", reason: .ciActivity, age: 2 * 24 * 3600)])
         model.show(.split(.feed))
-        model.getMeToZero()
+        let options = Dictionary(uniqueKeysWithValues: model.zeroOptions.map { ($0.key, $0.items.count) })
+        #expect(options == ["1": 2, "2": 0, "3": 1, "4": 0, "5": 0])
+        model.getMeToZero(model.zeroOptions[0])
         #expect(model.visibleItems.isEmpty)
         #expect(model.cleared.count == 2)
         #expect(model.needsMeCount == 1)

@@ -241,20 +241,43 @@ extension AppModel {
         recompute()
     }
 
-    /// Done for everything in Feed, or for everything older than a week in the
-    /// current split. Needs me is never cleared in bulk.
-    func getMeToZero() {
-        guard case .split(let split) = section, split != .needsMe else {
-            toast("Needs me is never cleared in bulk")
-            return
-        }
-        let cutoff = Date.now.addingTimeInterval(-7 * 24 * 3600)
-        let items = split == .feed ? snapshot.items(in: .feed) : snapshot.items(in: split).filter { $0.thread.updatedAt < cutoff }
+    /// One way to clear in bulk, with what it would clear.
+    struct ZeroOption: Identifiable {
+        let key: String
+        let title: String
+        let items: [InboxItem]
+        var id: String { key }
+    }
+
+    /// The bulk clears on offer, each with its count: everything in Feed, or
+    /// everything older than a day, three days or a week in the current split
+    /// (outside Needs me, in every split but Needs me). Needs me is never
+    /// cleared in bulk.
+    var zeroOptions: [ZeroOption] {
+        let splits: [Split] = if case .split(let split) = section, split != .needsMe { [split] } else { [.team, .following, .feed] }
+        let scope = splits.count == 1 ? splits[0].title : "Team, Following and Feed"
+        let pool = splits.flatMap { snapshot.items(in: $0) }
+        let day: TimeInterval = 24 * 3600
+        func older(_ days: Double) -> [InboxItem] { pool.filter { $0.thread.updatedAt < .now.addingTimeInterval(-days * day) } }
+        return [
+            ZeroOption(key: "1", title: "Everything in Feed", items: snapshot.items(in: .feed)),
+            ZeroOption(key: "2", title: "Read in \(scope)", items: pool.filter { !$0.isUnread }),
+            ZeroOption(key: "3", title: "Older than a day in \(scope)", items: older(1)),
+            ZeroOption(key: "4", title: "Older than 3 days in \(scope)", items: older(3)),
+            ZeroOption(key: "5", title: "Older than a week in \(scope)", items: older(7)),
+        ]
+    }
+
+    /// Done for every thread an option covers, as one batch with one undo.
+    func getMeToZero(_ option: ZeroOption) {
+        overlay = .none
+        let items = option.items.filter { $0.classification.split != .needsMe }
         guard !items.isEmpty else { return }
-        let batch = state.queue.enqueue(.done, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt) }, now: .now, grace: Self.grace)
+        let batch = state.queue.enqueue(.done, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
         state.cleared += items.map { ClearedEntry(batch: batch, thread: $0.thread, rule: nil, at: .now) }
         undoStack.append(.queued(batch))
-        toast("Cleared \(items.count) in \(split.title) · z to undo")
+        checked.removeAll()
+        toast("Cleared \(items.count) · z to undo")
         recompute()
         wakeDispatcher()
     }
