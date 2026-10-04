@@ -4,7 +4,7 @@
 # scripts/release.sh --publish fills in version and sha256 and updates both.
 cask "caton" do
   version "0.2.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "8e8ef2ab11a0a69f8d54c14327ce3328c6b50917e0621713c49a602b3f34b2dc"
 
   url "https://github.com/shergin/caton/releases/download/v#{version}/Caton-#{version}.zip"
   name "Caton"
