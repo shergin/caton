@@ -30,6 +30,8 @@ final class Preferences {
     var hotKeyStatus: String?
     /// Accounts that have seen the first-sync summary.
     var welcomedAccounts: Set<String> { didSet { defaults.set(Array(welcomedAccounts), forKey: "welcomedAccounts") } }
+    /// What "Sign in with GitHub" asks for.
+    var access: DeviceFlow.Access { didSet { defaults.set(access.rawValue, forKey: "access") } }
     /// Whether the three-key tip has been shown.
     var tipsShown: Bool { didSet { defaults.set(tipsShown, forKey: "tipsShown") } }
     private(set) var launchAtLoginError: String?
@@ -46,6 +48,7 @@ final class Preferences {
         hotKey = defaults.data(forKey: "hotKey").flatMap { try? JSONDecoder().decode(HotKeyCombination.self, from: $0) } ?? .standard
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
         tipsShown = defaults.bool(forKey: "tipsShown")
+        access = defaults.string(forKey: "access").flatMap(DeviceFlow.Access.init(rawValue:)) ?? .full
     }
 
     /// Launch at login needs the bundled app; `swift run` has no bundle to register.

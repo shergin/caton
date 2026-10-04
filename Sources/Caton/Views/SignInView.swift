@@ -4,6 +4,12 @@ struct SignInView: View {
     @Bindable var model: AppModel
     @State private var token = ""
 
+    /// A classic token with the scopes the chosen access needs.
+    private var tokenURL: URL {
+        let scopes = model.preferences.access.scopes.replacingOccurrences(of: " ", with: ",")
+        return URL(string: "https://github.com/settings/tokens/new?scopes=\(scopes)&description=Caton")!
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
@@ -42,7 +48,7 @@ struct SignInView: View {
                 Text(error).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text("Caton reads notifications with a classic-scope token (notifications, repo). GitHub does not let fine-grained tokens read notifications.")
+            Text("Caton reads notifications with a classic-scope token. GitHub does not let fine-grained tokens or GitHub App tokens read notifications.")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -52,6 +58,17 @@ struct SignInView: View {
 
     @ViewBuilder private var methods: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Picker("Access", selection: Binding(get: { model.preferences.access }, set: { model.preferences.access = $0 })) {
+                ForEach(DeviceFlow.Access.allCases, id: \.self) { access in
+                    Text(access == .full ? "Private and public repositories" : "Public repositories only").tag(access)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text(model.preferences.access.explanation)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Button {
                 model.signInWithDeviceFlow()
             } label: {
@@ -80,7 +97,7 @@ struct SignInView: View {
                 Button("Sign in") { model.signIn(token: token) }
                     .disabled(token.isEmpty)
             }
-            Link("Create a token with the right scopes →", destination: URL(string: "https://github.com/settings/tokens/new?scopes=notifications,repo&description=Caton")!)
+            Link("Create a token with the right scopes →", destination: tokenURL)
                 .font(.system(size: 11))
         }
     }

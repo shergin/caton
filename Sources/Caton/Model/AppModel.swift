@@ -214,7 +214,7 @@ final class AppModel {
             return
         }
         signInError = nil
-        let flow = DeviceFlow(clientID: clientID)
+        let flow = DeviceFlow(clientID: clientID, access: preferences.access)
         signInTask = Task {
             do {
                 let code = try await flow.requestCode()

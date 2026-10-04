@@ -144,9 +144,14 @@ struct SettingsView: View {
         Form {
             switch model.account {
             case .signedIn(let viewer):
-                LabeledContent("Signed in as", value: "@\(viewer.login)")
-                LabeledContent("Token scopes", value: viewer.scopes.sorted().joined(separator: ", ").nonEmpty ?? "—")
-                Button("Sign out", role: .destructive) { model.signOut() }
+                Section {
+                    LabeledContent("Signed in as", value: "@\(viewer.login)")
+                    LabeledContent("Access", value: DeviceFlow.Access(scopes: viewer.scopes).title)
+                    LabeledContent("Token scopes", value: viewer.scopes.sorted().joined(separator: ", ").nonEmpty ?? "—")
+                    Button("Sign out", role: .destructive) { model.signOut() }
+                } footer: {
+                    Text(DeviceFlow.Access(scopes: viewer.scopes).explanation + " Sign out and in again to change it. The token stays in this Mac's Keychain; signing out deletes it and everything Caton stored for the account.")
+                }
             case .connecting:
                 Text("Signing in…")
             case .signedOut:
@@ -154,6 +159,11 @@ struct SettingsView: View {
             }
             if model.dryRun {
                 Text("Dry run: nothing is sent to GitHub.").foregroundStyle(.orange)
+            }
+            Section("Tokens") {
+                Text("Caton signs in through its GitHub OAuth App, reuses the GitHub CLI's login, or takes a classic personal access token. GitHub's notifications API rejects fine-grained personal access tokens and GitHub App tokens, so those don't work.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

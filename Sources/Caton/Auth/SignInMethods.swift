@@ -42,7 +42,38 @@ struct DeviceFlow {
         let expiresAt: Date
     }
 
-    static let scopes = "notifications repo"
+    /// Full reads private repositories' pull requests and checks; Lite asks
+    /// only for public ones, and private subjects show no state.
+    enum Access: String, CaseIterable, Sendable {
+        case full
+        case lite
+
+        var scopes: String {
+            switch self {
+            case .full: "notifications repo"
+            case .lite: "notifications public_repo"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .full: "Full"
+            case .lite: "Lite"
+            }
+        }
+
+        var explanation: String {
+            switch self {
+            case .full: "Reads state and checks in private repositories too. Asks for the repo scope."
+            case .lite: "Public repositories only: private pull requests show no state or checks."
+            }
+        }
+
+        /// The access a token's scopes give.
+        init(scopes: Set<String>) {
+            self = scopes.contains("repo") || scopes.isEmpty ? .full : .lite
+        }
+    }
 
     /// Caton's OAuth App. A client id is public by design; device flow
     /// needs no secret.
@@ -55,6 +86,7 @@ struct DeviceFlow {
     }
 
     let clientID: String
+    var access: Access = .full
     var session: URLSession = .shared
 
     func requestCode() async throws -> Code {
@@ -65,7 +97,7 @@ struct DeviceFlow {
             let interval: Int
             let expires_in: Int
         }
-        let response: Response = try await post("https://github.com/login/device/code", ["client_id": clientID, "scope": Self.scopes])
+        let response: Response = try await post("https://github.com/login/device/code", ["client_id": clientID, "scope": access.scopes])
         return Code(
             deviceCode: response.device_code,
             userCode: response.user_code,
