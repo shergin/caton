@@ -146,4 +146,18 @@ struct ClassifierTests {
         let result = Classifier.classify(makeThread(kind: .release, number: nil, reason: .subscribed), facts: nil, settings: settings)
         #expect(result.split == .feed)
     }
+
+    @Test func every_classification_says_why() {
+        for reason in Reason.allCases {
+            for facts in [nil, makeFacts(), makeFacts(state: .merged), makeFacts(isDraft: true), makeFacts(author: "dependabot[bot]", authorIsApp: true)] {
+                let result = Classifier.classify(makeThread(reason: reason), facts: facts, settings: settings)
+                #expect(!result.because.isEmpty, "\(reason) with \(String(describing: facts))")
+            }
+        }
+    }
+
+    @Test func a_rule_that_moves_a_thread_says_so() {
+        let result = Classifier.classify(makeThread(reason: .subscribed), facts: makeFacts(author: "dependabot[bot]", authorIsApp: true), settings: settings)
+        #expect(result.because.contains("Bot pull requests"))
+    }
 }

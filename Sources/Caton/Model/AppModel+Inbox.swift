@@ -291,6 +291,11 @@ extension AppModel {
         overlay = .snooze
     }
 
+    func explain() {
+        guard selectedItem != nil else { return }
+        overlay = .why
+    }
+
     func peek() {
         guard selectedItem != nil else { return }
         overlay = .peek

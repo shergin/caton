@@ -166,6 +166,7 @@ struct InboxView: View {
                                 showsWaiting: waiting,
                                 showsRepository: !model.groupByRepository || acrossRepositories.contains(item.id),
                                 lenses: model.lenses(for: item.id),
+                                spokenState: model.spokenState(for: item),
                                 onOpen: {
                                     model.select(item.id)
                                     if model.open(item.id) { close() }
@@ -208,6 +209,14 @@ struct InboxView: View {
             }
         case .zero:
             ZeroPicker(model: model)
+        case .why:
+            if let item = model.selectedItem {
+                WhyCard(item: item, actor: model.facts(for: item.thread)?.author?.login)
+                    .onTapGesture { model.overlay = .none }
+            }
+        case .tips:
+            TipsCard()
+                .onTapGesture { model.dismissTips() }
         case .welcome:
             if let welcome = model.welcome {
                 ZStack {
@@ -397,6 +406,71 @@ struct SnoozePicker: View {
     }
 }
 
+/// "Why is this here?": the classifier's reasoning for the selected thread.
+struct WhyCard: View {
+    let item: InboxItem
+    let actor: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Why it's in \(item.classification.split.title)").font(.system(size: 12, weight: .semibold))
+            Text(item.classification.because).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                fact("GitHub's reason", item.thread.reason.rawValue.replacingOccurrences(of: "_", with: " "))
+                fact("Label", item.classification.badge.title)
+                if let rule = item.classification.routedBy { fact("Rule", rule.title) }
+                if let actor { fact("Opened by", actor + (item.classification.actorKind.map { $0 == .human ? "" : " (\($0.title))" } ?? "")) }
+                if let note = item.resurfacing?.note { fact("Back because", String(note.dropFirst("back: ".count))) }
+            }
+            Text("Wrong? Mute the repository, mark an account as a bot or turn the rule off in Settings.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(width: 320)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .shadow(radius: 8)
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(.secondary).frame(width: 100, alignment: .leading)
+            Text(value)
+        }
+        .font(.system(size: 11))
+    }
+}
+
+/// The three keys worth learning first, shown once.
+struct TipsCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Three keys to start with").font(.system(size: 13, weight: .semibold))
+            tip("e", "Done: it leaves until something new happens.")
+            tip("h", "Snooze: it comes back later, or sooner if it needs you.")
+            tip("⇥", "Next split: Needs me, Team, Following, Feed.")
+            Text("⌘K finds everything else. Press any key to start.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 320)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 10)
+    }
+
+    private func tip(_ key: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(key)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .frame(width: 26, height: 22)
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 /// Get me to zero: each bulk clear with how many threads it would take.
 struct ZeroPicker: View {
     let model: AppModel
@@ -570,6 +644,7 @@ struct Hint: View {
 
 struct ToastStack: View {
     let toasts: [AppModel.Toast]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 4) {
@@ -583,10 +658,10 @@ struct ToastStack: View {
                     .padding(.vertical, 5)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: toasts)
+        .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.85), value: toasts)
     }
 }
 

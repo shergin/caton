@@ -243,9 +243,11 @@ final class NotificationPanel: NSPanel {
     /// Shows the panel with a menu's quick fade.
     func present() {
         fade?.cancel()
-        alphaValue = 0
+        let animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        alphaValue = animates ? 0 : 1
         makeKeyAndOrderFront(nil)
         invalidateShadow()
+        guard animates else { return }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.08
             animator().alphaValue = 1
@@ -255,6 +257,11 @@ final class NotificationPanel: NSPanel {
     /// Hides the panel with a menu's quick fade.
     func dismiss() {
         guard isVisible else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            fade?.cancel()
+            orderOut(nil)
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
             animator().alphaValue = 0

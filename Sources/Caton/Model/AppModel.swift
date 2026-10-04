@@ -46,6 +46,8 @@ final class AppModel {
         case peek
         case welcome
         case zero
+        case why
+        case tips
     }
 
     /// The one message the status strip shows, the most urgent first.
@@ -110,7 +112,7 @@ final class AppModel {
                 repositoryOrder = []
                 refresh(force: false)
                 subjects?.searchReviewRequests(force: true)
-                if welcome != nil { overlay = .welcome }
+                if welcome != nil { overlay = .welcome } else { offerTips() }
             } else {
                 isSearching = false
                 checked.removeAll()
@@ -518,6 +520,7 @@ final class AppModel {
         if case .signedIn(let viewer) = account { preferences.welcomedAccounts.insert(viewer.login) }
         welcome = nil
         overlay = .none
+        offerTips()
         if syncRuleClears {
             // Rule clears so far stayed local; now they reach GitHub too, but
             // only where the clear still covers the thread's latest activity.
@@ -561,6 +564,17 @@ final class AppModel {
                 alert.runModal()
             }
         }
+    }
+
+    /// Shows the three-key tip once, on a signed-in panel with nothing else over it.
+    func offerTips() {
+        guard !preferences.tipsShown, case .signedIn = account, overlay == .none else { return }
+        overlay = .tips
+    }
+
+    func dismissTips() {
+        preferences.tipsShown = true
+        if overlay == .tips { overlay = .none }
     }
 
     /// Shows a thread a banner named.
@@ -627,6 +641,30 @@ final class AppModel {
     func lenses(for id: String) -> SubjectStore.Lenses { subjects?.lenses(for: id) ?? SubjectStore.Lenses() }
 
     func facts(for thread: NotificationThread) -> SubjectFacts? { subjects?.facts(for: thread) }
+
+    /// "open pull request, checks failing, by dependabot (bot)", for VoiceOver.
+    func spokenState(for item: InboxItem) -> String {
+        guard let facts = facts(for: item.thread) else { return "" }
+        var parts: [String] = []
+        let kind = item.thread.kind == .pullRequest ? "pull request" : "issue"
+        switch facts.state {
+        case .open: parts.append(facts.isDraft ? "draft \(kind)" : facts.isInMergeQueue ? "\(kind) in the merge queue" : "open \(kind)")
+        case .merged: parts.append("merged \(kind)")
+        case .closed: parts.append(facts.closedReason == .notPlanned ? "closed as not planned" : "closed \(kind)")
+        }
+        switch facts.checks {
+        case .failure: parts.append("checks failing")
+        case .pending: parts.append("checks running")
+        case .success, nil: break
+        }
+        if facts.reviewDecision == .approved { parts.append("approved") }
+        if facts.reviewDecision == .changesRequested { parts.append("changes requested") }
+        if let author = facts.author {
+            let kind = item.classification.actorKind.flatMap { $0 == .human ? nil : $0.title.lowercased() }
+            parts.append("by \(author.login)" + (kind.map { " (\($0))" } ?? ""))
+        }
+        return parts.joined(separator: ", ")
+    }
 
     // MARK: Debugging
 

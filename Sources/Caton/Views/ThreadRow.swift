@@ -12,6 +12,8 @@ struct ThreadRow: View {
     /// Whether line one names the repository; under a repository header it does not.
     let showsRepository: Bool
     let lenses: SubjectStore.Lenses
+    /// The subject's state and who opened it, for VoiceOver.
+    let spokenState: String
     let onOpen: () -> Void
     let onToggleCheck: () -> Void
     let onDone: () -> Void
@@ -19,6 +21,7 @@ struct ThreadRow: View {
     let onUnsubscribe: () -> Void
 
     @State private var isHovered = false
+    @State private var isIconHovered = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -33,6 +36,7 @@ struct ThreadRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { isIconHovered = $0 }
             .help(isChecked ? "Deselect" : "Select for bulk actions (x)")
 
             VStack(alignment: .leading, spacing: 2) {
@@ -85,15 +89,31 @@ struct ThreadRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
         .onHover { isHovered = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.thread.title), \(item.thread.reference), \(item.classification.badge.title)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
         .accessibilityValue(item.isUnread ? "Unread" : "Read")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityAction(named: "Done", onDone)
+        .accessibilityAction(named: "Snooze", onSnooze)
+        .accessibilityAction(named: "Unsubscribe", onUnsubscribe)
+        .accessibilityAction(named: isChecked ? "Deselect" : "Select", onToggleCheck)
+    }
+
+    /// Title, reference, label, state and author, age, and why it is back.
+    private var spokenLabel: String {
+        var parts = [item.thread.title, item.thread.reference, item.classification.badge.title]
+        if !spokenState.isEmpty { parts.append(spokenState) }
+        parts.append("updated \(item.thread.updatedAt.formatted(.relative(presentation: .named)))")
+        if let note = item.resurfacing?.note { parts.append(note.replacingOccurrences(of: "back:", with: "back because of")) }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder private var glyph: some View {
         if isChecked {
             Image(systemName: "checkmark.square.fill").foregroundStyle(Color.accentColor)
+        } else if isIconHovered {
+            // Hovering the icon offers it as a checkbox.
+            Image(systemName: "square").foregroundStyle(.secondary)
         } else if let pullRequest = lenses.pullRequestIcon {
             PullRequestIcon(pullRequest: pullRequest, isUnread: item.isUnread)
         } else if let issue = lenses.issueIcon {

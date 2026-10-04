@@ -30,6 +30,8 @@ final class Preferences {
     var hotKeyStatus: String?
     /// Accounts that have seen the first-sync summary.
     var welcomedAccounts: Set<String> { didSet { defaults.set(Array(welcomedAccounts), forKey: "welcomedAccounts") } }
+    /// Whether the three-key tip has been shown.
+    var tipsShown: Bool { didSet { defaults.set(tipsShown, forKey: "tipsShown") } }
     private(set) var launchAtLoginError: String?
 
     init(defaults: UserDefaults = .standard) {
@@ -43,6 +45,7 @@ final class Preferences {
         panelSize = width > 0 && height > 0 ? NSSize(width: width, height: height) : NotificationPanel.defaultSize
         hotKey = defaults.data(forKey: "hotKey").flatMap { try? JSONDecoder().decode(HotKeyCombination.self, from: $0) } ?? .standard
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
+        tipsShown = defaults.bool(forKey: "tipsShown")
     }
 
     /// Launch at login needs the bundled app; `swift run` has no bundle to register.

@@ -42,7 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "peek": model.peek()
                 case "help": model.overlay = .help
                 case "commands": model.overlay = .commands
-                case "snooze": model.overlay = .snooze
+                case "snooze": model.beginSnooze()
+                case "why": model.explain()
+                case "tips": model.overlay = .tips
+                case "zero": model.overlay = .zero
                 default: break
                 }
                 try? await Task.sleep(for: .seconds(2))

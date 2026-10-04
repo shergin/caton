@@ -34,6 +34,7 @@ struct Command: Identifiable {
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
         Command("peek", "Peek at the latest", keys: "p") { $0.peek() },
+        Command("why", "Why is this here?", keys: "") { $0.explain() },
         Command("mute", "Mute this repository", keys: "") { $0.muteRepository() },
         Command("zero", "Get me to zero…", keys: "") { $0.overlay = .zero },
         Command("next-split", "Next split", keys: "⇥") { $0.cycleSplit(by: 1) },
@@ -73,7 +74,7 @@ enum KeyRouter {
                 model.snooze(until: option.date(), onlyIfQuiet: model.snoozeOnlyIfQuiet)
             }
             return true
-        case .help:
+        case .help, .why:
             model.overlay = .none
             return true
         case .peek:
@@ -95,6 +96,10 @@ enum KeyRouter {
             if event.keyCode == 53 { model.overlay = .none; return true }
             if !isRepeat, let option = model.zeroOptions.first(where: { $0.key == characters }) { model.getMeToZero(option) }
             return true
+        case .tips:
+            // Any key ends the tip; the keys it teaches also do their job.
+            model.dismissTips()
+            if event.keyCode == 53 { return true }
         case .none:
             break
         }
