@@ -37,6 +37,8 @@ final class Preferences {
     /// A morning banner summing up what waits and what rules cleared overnight.
     var digestEnabled: Bool { didSet { defaults.set(digestEnabled, forKey: "digestEnabled") } }
     var lastDigest: Date? { didSet { defaults.set(lastDigest, forKey: "lastDigest") } }
+    /// The inbox lives in a window rather than under the menu bar icon.
+    var detached: Bool { didSet { defaults.set(detached, forKey: "detached") } }
     /// Accounts that have seen the first-sync summary.
     var welcomedAccounts: Set<String> { didSet { defaults.set(Array(welcomedAccounts), forKey: "welcomedAccounts") } }
     /// What "Sign in with GitHub" asks for.
@@ -60,6 +62,7 @@ final class Preferences {
         alertCap = (defaults.object(forKey: "alertCap") as? Int).map { min(max($0, 1), 10) } ?? AlertPolicy.defaultCap
         digestEnabled = defaults.bool(forKey: "digestEnabled")
         lastDigest = defaults.object(forKey: "lastDigest") as? Date
+        detached = defaults.bool(forKey: "detached")
         welcomedAccounts = Set(defaults.stringArray(forKey: "welcomedAccounts") ?? [])
         tipsShown = defaults.bool(forKey: "tipsShown")
         access = defaults.string(forKey: "access").flatMap(DeviceFlow.Access.init(rawValue:)) ?? .full

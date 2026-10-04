@@ -59,6 +59,15 @@ struct InboxView: View {
                 }
                 if model.isSyncing { ProgressView().controlSize(.mini) }
                 Spacer()
+                Button {
+                    model.preferences.detached ? model.attach?() : model.detach?()
+                } label: {
+                    Image(systemName: model.preferences.detached ? "menubar.arrow.up.rectangle" : "macwindow")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(model.preferences.detached ? "Back under the menu bar icon" : "Open in a window")
                 Button { model.overlay = .commands } label: {
                     Text("⌘K").font(.system(size: 10, weight: .medium, design: .monospaced))
                         .padding(.horizontal, 5).padding(.vertical, 2)

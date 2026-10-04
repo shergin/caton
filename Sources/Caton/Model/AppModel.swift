@@ -126,11 +126,18 @@ final class AppModel {
         }
     }
 
+    /// The detached window is open but another window has the focus.
+    var isWindowInBackground = false
+
     let preferences: Preferences
     let banners = Banners()
     let updates: Updates
     /// Opens the settings window; set by the app delegate.
     @ObservationIgnored var openSettings: (() -> Void)?
+    /// Moves the inbox into a window, and back under the menu bar icon; set
+    /// by the status item.
+    @ObservationIgnored var detach: (() -> Void)?
+    @ObservationIgnored var attach: (() -> Void)?
 
     // MARK: State shared with the extensions
 
@@ -501,7 +508,7 @@ final class AppModel {
         let decision = AlertPolicy.decide(
             needsMe: snapshot.items(in: .needsMe),
             alerted: state.alerted,
-            isPanelVisible: isPanelVisible,
+            isPanelVisible: isPanelVisible && !isWindowInBackground,
             quietHours: preferences.quietHours,
             isEnabled: preferences.alertsEnabled,
             isBaseline: baseline,

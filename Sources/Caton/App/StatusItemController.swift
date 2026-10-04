@@ -14,13 +14,18 @@ final class StatusItemController: NSObject {
     private let model: AppModel
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let panel: NotificationPanel
+    private let window: DetachedWindow
     private var outsideClickMonitor: Any?
     private var keyMonitor: Any?
 
     init(model: AppModel) {
         self.model = model
         panel = NotificationPanel(size: model.preferences.panelSize)
+        window = DetachedWindow(model: model)
         super.init()
+        window.onClose = { [weak self] in self?.model.preferences.detached = false }
+        model.detach = { [weak self] in self?.detach() }
+        model.attach = { [weak self] in self?.attach() }
         let hosting = NSHostingView(rootView: PanelView(model: model, close: { [weak self] in self?.closePanel() }))
         // The window decides its size; the content fits whatever it is given.
         hosting.sizingOptions = []
@@ -44,11 +49,36 @@ final class StatusItemController: NSObject {
     }
 
     func togglePanel() {
-        if model.isPanelVisible { closePanel() } else { showPanel() }
+        if model.preferences.detached {
+            window.toggle()
+        } else if model.isPanelVisible {
+            closePanel()
+        } else {
+            showPanel()
+        }
     }
 
     func showPanel() {
-        showPanel(attempts: 40)
+        if model.preferences.detached {
+            window.show()
+        } else {
+            showPanel(attempts: 40)
+        }
+    }
+
+    /// Moves the inbox into its own window.
+    func detach() {
+        closePanel()
+        model.preferences.detached = true
+        window.show()
+    }
+
+    /// Puts the inbox back under the menu bar icon.
+    func attach() {
+        model.preferences.detached = false
+        window.dismantle()
+        model.isPanelVisible = false
+        showPanel()
     }
 
     /// Places the panel under the icon. Right after launch the icon is not in
@@ -142,7 +172,8 @@ final class StatusItemController: NSObject {
     /// Renders the panel's content to a PNG, for checking layout without
     /// screen recording permission.
     func snapshot(to url: URL) {
-        for (view, file) in [(panel.hostedView, url), (statusItem.button, url.deletingPathExtension().appendingPathExtension("menubar.png"))] {
+        let content = model.preferences.detached ? window.contentView : panel.hostedView
+        for (view, file) in [(content, url), (statusItem.button, url.deletingPathExtension().appendingPathExtension("menubar.png"))] {
             guard let view, let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: representation)
             try? representation.representation(using: .png, properties: [:])?.write(to: file)
