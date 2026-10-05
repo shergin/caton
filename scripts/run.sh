@@ -4,5 +4,6 @@
 set -e
 cd "$(dirname "$0")/.."
 swift build
-pkill -x Caton 2>/dev/null || true
+# Only the debug build: the installed app is a process named Caton too.
+pkill -f "\.build/debug/Caton" 2>/dev/null || true
 exec .build/debug/Caton

@@ -13,7 +13,9 @@ CATON_DRY_RUN=1 ./scripts/run.sh
 
 Always run against a real account with `CATON_DRY_RUN=1` unless the user
 asks otherwise: without it, verbs and rules change the account's
-notifications on GitHub. Stop the app with `pkill -x Caton`.
+notifications on GitHub. Stop the dev build with
+`pkill -f .build/debug/Caton`; `pkill -x Caton` would also quit the
+installed app.
 
 Debug builds keep their own files (`~/Library/Application Support/Caton
 Debug`, `~/Library/Caches/dev.caton.Caton.debug`), apart from the installed
