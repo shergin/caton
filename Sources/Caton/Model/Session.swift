@@ -47,21 +47,21 @@ final class Session {
 
     // MARK: Observed state
 
-    private(set) var snapshot = InboxSnapshot() { didSet { snapshotVersion &+= 1 } }
+    private(set) var snapshot = InboxSnapshot()
     /// Everything Caton knows that GitHub does not. Views read its settings,
     /// saved searches and reminders; changes go through the session.
-    internal(set) var state = LocalState()
+    var state = LocalState()
     private(set) var isSyncing = false
     /// When GitHub's rate limit lets requests through again.
     private(set) var cooldownUntil: Date?
     /// The last thing that went wrong, for the status strip.
     var errorMessage: String?
     /// Writes to the viewer's pull requests waiting out the undo window.
-    internal(set) var pendingWrites: [String: PendingWrite] = [:]
+    var pendingWrites: [String: PendingWrite] = [:]
 
     // MARK: Unobserved state
 
-    @ObservationIgnored internal(set) var threads: [String: NotificationThread] = [:]
+    @ObservationIgnored var threads: [String: NotificationThread] = [:]
     /// Snoozes that ended this session, and why, so the note outlives the snooze.
     @ObservationIgnored var wokenSnoozes: [ItemID: Resurfacing] = [:]
     @ObservationIgnored private let persistence: StatePersistence?
@@ -70,8 +70,6 @@ final class Session {
     @ObservationIgnored var dispatchTask: Task<Void, Never>?
     @ObservationIgnored private var recomputeScheduled = false
     @ObservationIgnored private(set) var hasPolled = false
-    /// Counts snapshot changes, for caches of what is laid out from it.
-    @ObservationIgnored private(set) var snapshotVersion = 0
     /// How long a write to a pull request waits for an undo; tests shorten it.
     @ObservationIgnored var writeGrace: Duration = .seconds(Session.grace)
 

@@ -75,15 +75,15 @@ struct AppModelTests {
     /// Three Needs me threads, newest first: 1, 2, 3.
     func loadThree() {
         load([thread("1", age: 10), thread("2", age: 20), thread("3", age: 30)])
-        model.groupByRepository = false
-        model.selectFirst()
+        model.panel.groupByRepository = false
+        model.panel.selectFirst()
     }
 
     @Test func done_hides_the_row_at_once_and_selects_the_next() {
         loadThree()
         model.done()
-        #expect(model.visibleItems.map(\.id.key) == ["2", "3"])
-        #expect(model.selectedID == row("2"))
+        #expect(model.panel.items.map(\.id.key) == ["2", "3"])
+        #expect(model.panel.selectedID == row("2"))
         #expect(session.state.queue.actions.map(\.verb) == [.done])
         #expect(model.needsMeCount == 2)
     }
@@ -92,35 +92,35 @@ struct AppModelTests {
         loadThree()
         model.done()
         model.undo()
-        #expect(model.visibleItems.map(\.id.key) == ["1", "2", "3"])
+        #expect(model.panel.items.map(\.id.key) == ["1", "2", "3"])
         #expect(session.state.queue.isEmpty)
-        #expect(model.selectedID == row("1"))
+        #expect(model.panel.selectedID == row("1"))
     }
 
     @Test func a_verb_applies_to_every_checked_row() {
         loadThree()
-        model.toggleChecked(row("1"))
-        model.toggleChecked(row("3"))
+        model.panel.toggleChecked(row("1"))
+        model.panel.toggleChecked(row("3"))
         model.done()
-        #expect(model.visibleItems.map(\.id.key) == ["2"])
+        #expect(model.panel.items.map(\.id.key) == ["2"])
         #expect(Set(session.state.queue.actions.map(\.batch)).count == 1)
-        #expect(model.checked.isEmpty)
+        #expect(model.panel.checked.isEmpty)
     }
 
     @Test func snooze_hides_until_undone() {
         loadThree()
         model.snooze(until: .now.addingTimeInterval(3600))
-        #expect(model.visibleItems.map(\.id.key) == ["2", "3"])
-        #expect(model.count(.snoozed) == 1)
+        #expect(model.panel.items.map(\.id.key) == ["2", "3"])
+        #expect(model.panel.count(.snoozed) == 1)
         model.undo()
-        #expect(model.visibleItems.count == 3)
+        #expect(model.panel.items.count == 3)
     }
 
     @Test func open_records_the_page_and_shows_the_row_read() {
         loadThree()
         #expect(model.open())
         #expect(opened.urls.map(\.lastPathComponent) == ["1"])
-        #expect(model.visibleItems.first?.isUnread == false)
+        #expect(model.panel.items.first?.isUnread == false)
         #expect(session.state.queue.actions.map(\.verb) == [.markRead])
     }
 
@@ -134,39 +134,39 @@ struct AppModelTests {
 
     @Test func get_me_to_zero_previews_its_counts_and_clears_feed_with_one_undo() {
         load([thread("1"), thread("4", reason: .subscribed), thread("5", reason: .ciActivity, age: 2 * 24 * 3600)])
-        model.show(.split(.feed))
+        model.panel.show(.split(.feed))
         let options = Dictionary(uniqueKeysWithValues: model.zeroOptions.map { ($0.key, $0.items.count) })
         #expect(options == ["1": 2, "2": 0, "3": 1, "4": 0, "5": 0])
         model.getMeToZero(model.zeroOptions[0])
-        #expect(model.visibleItems.isEmpty)
+        #expect(model.panel.items.isEmpty)
         #expect(session.state.cleared.count == 2)
         #expect(model.needsMeCount == 1)
         model.undo()
-        #expect(model.visibleItems.count == 2)
+        #expect(model.panel.items.count == 2)
         #expect(session.state.cleared.isEmpty)
     }
 
     @Test func a_busy_feed_repository_is_one_row_that_done_clears_whole() {
         load((1...5).map { thread("\($0)", reason: .subscribed, age: Double($0)) } + [thread("8", reason: .subscribed, repository: "acme/api", age: 9), thread("9")])
-        model.show(.split(.feed))
-        #expect(model.visibleRows.map(\.id.label) == ["bundle:repo:acme/web", "header:acme/api", "8"])
-        #expect(model.selectedID == .bundle(.repository("acme/web")))
+        model.panel.show(.split(.feed))
+        #expect(model.panel.rows.map(\.id.label) == ["bundle:repo:acme/web", "header:acme/api", "8"])
+        #expect(model.panel.selectedID == .bundle(.repository("acme/web")))
         model.done()
-        #expect(model.visibleRows.map(\.id.label) == ["header:acme/api", "8"])
+        #expect(model.panel.rows.map(\.id.label) == ["header:acme/api", "8"])
         #expect(session.state.queue.actions.count == 5)
         #expect(model.needsMeCount == 1)
     }
 
     @Test func opening_a_bundle_shows_its_threads_and_left_closes_it() {
         load((1...4).map { thread("\($0)", reason: .subscribed, age: Double($0)) } + [thread("8", reason: .subscribed, repository: "acme/api", age: 9)])
-        model.show(.split(.feed))
+        model.panel.show(.split(.feed))
         #expect(!model.open())
-        #expect(model.visibleRows.count == 7)
-        model.moveSelection(by: 2)
-        #expect(model.selectedID == row("2"))
-        model.collapseSelection()
-        #expect(model.selectedID == .bundle(.repository("acme/web")))
-        #expect(model.visibleRows.count == 3)
+        #expect(model.panel.rows.count == 7)
+        model.panel.moveSelection(by: 2)
+        #expect(model.panel.selectedID == row("2"))
+        model.panel.collapseSelection()
+        #expect(model.panel.selectedID == .bundle(.repository("acme/web")))
+        #expect(model.panel.rows.count == 3)
     }
 
     @Test func the_status_strip_shows_an_error_before_a_cooldown() {
@@ -185,25 +185,25 @@ struct AppModelTests {
 
     @Test func a_saved_search_becomes_a_split_across_all_four() {
         load([thread("1", repository: "acme/web"), thread("2", reason: .subscribed, repository: "acme/web"), thread("3", repository: "acme/api")])
-        model.searchQuery = "repo:web"
+        model.panel.searchQuery = "repo:web"
         model.beginSavingSearch()
-        #expect(model.overlay == .saveSearch)
+        #expect(model.panel.overlay == .saveSearch)
         model.saveSearch(named: "Web")
-        guard case .saved(let id) = model.section else { Issue.record("not on the saved split"); return }
-        #expect(model.searchQuery.isEmpty)
-        #expect(Set(model.visibleItems.map(\.id.key)) == ["1", "2"])
-        #expect(model.count(.saved(id)) == 2)
-        model.cycleSplit(by: 1)
-        #expect(model.section == .split(.needsMe))
+        guard case .saved(let id) = model.panel.section else { Issue.record("not on the saved split"); return }
+        #expect(model.panel.searchQuery.isEmpty)
+        #expect(Set(model.panel.items.map(\.id.key)) == ["1", "2"])
+        #expect(model.panel.count(.saved(id)) == 2)
+        model.panel.cycleSplit(by: 1)
+        #expect(model.panel.section == .split(.needsMe))
         model.deleteSavedSearch(id)
-        #expect(model.tabs.count == 4)
+        #expect(model.panel.tabs.count == 4)
     }
 
     @Test func practice_sets_the_inbox_aside_and_gives_it_back() {
         loadThree()
         model.enterPractice()
         #expect(model.isPractice)
-        #expect(Split.allCases.map { model.snapshot.count($0) } == [4, 2, 2, 11])
+        #expect(Split.allCases.map { model.inbox!.snapshot.count($0) } == [4, 2, 2, 11])
         model.done()
         #expect(model.needsMeCount == 3)
         #expect(model.open())
@@ -211,7 +211,7 @@ struct AppModelTests {
         model.exitPractice()
         #expect(!model.isPractice)
         #expect(model.needsMeCount == 3)
-        #expect(model.visibleItems.map(\.id.key) == ["1", "2", "3"])
+        #expect(model.panel.items.map(\.id.key) == ["1", "2", "3"])
         #expect(session.state.queue.isEmpty)
     }
 
@@ -259,7 +259,7 @@ struct AppModelTests {
         loadThree()
         session.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(-60))
         session.recompute()
-        let reminder = model.snapshot.items(in: .needsMe).first { $0.id == .followUp("PR_7") }
+        let reminder = model.inbox!.snapshot.items(in: .needsMe).first { $0.id == .followUp("PR_7") }
         #expect(reminder?.classification.badge == .followUp)
         #expect(reminder?.resurfacing == .noActivity)
         #expect(model.needsMeCount == 4)
@@ -286,30 +286,30 @@ struct AppModelTests {
 
     @Test func tab_cycles_through_the_splits() {
         loadThree()
-        model.cycleSplit(by: 1)
-        #expect(model.section == .split(.team))
-        model.cycleSplit(by: -2)
-        #expect(model.section == .split(.feed))
+        model.panel.cycleSplit(by: 1)
+        #expect(model.panel.section == .split(.team))
+        model.panel.cycleSplit(by: -2)
+        #expect(model.panel.section == .split(.feed))
     }
 
     @Test func search_qualifiers_filter_the_visible_rows() {
         load([thread("1", repository: "acme/web", title: "Crash on launch"), thread("2", repository: "acme/api", title: "Crash in parser")])
-        model.searchQuery = "crash -repo:api"
-        #expect(model.visibleItems.map(\.id.key) == ["1"])
+        model.panel.searchQuery = "crash -repo:api"
+        #expect(model.panel.items.map(\.id.key) == ["1"])
     }
 
     @Test func grouping_keeps_repository_order_while_the_panel_is_open() {
         load([thread("1", repository: "acme/web", age: 30), thread("2", repository: "acme/api", age: 10)])
-        #expect(model.visibleItems.map(\.id.key) == ["2", "1"])
+        #expect(model.panel.items.map(\.id.key) == ["2", "1"])
         // New activity in acme/web would sort it first; the open panel keeps the order.
         load([thread("1", repository: "acme/web", age: 0), thread("2", repository: "acme/api", age: 10)])
-        #expect(model.visibleItems.map(\.id.key) == ["2", "1"])
+        #expect(model.panel.items.map(\.id.key) == ["2", "1"])
     }
 
     @Test func selection_stays_on_its_row_when_the_list_changes() {
         loadThree()
-        model.select(row("2"))
+        model.panel.select(row("2"))
         load([thread("0", age: 1), thread("1", age: 10), thread("2", age: 20), thread("3", age: 30)])
-        #expect(model.selectedID == row("2"))
+        #expect(model.panel.selectedID == row("2"))
     }
 }

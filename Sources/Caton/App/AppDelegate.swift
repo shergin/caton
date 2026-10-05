@@ -34,32 +34,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.showPanel()
         }
         if let section = ProcessInfo.processInfo.environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) {
-            model.show(.split(section))
+            model.panel.show(.split(section))
         }
-        if ProcessInfo.processInfo.environment["CATON_SECTION"] == "prs" { model.show(.myPullRequests) }
+        if ProcessInfo.processInfo.environment["CATON_SECTION"] == "prs" { model.panel.show(.myPullRequests) }
         let environment = ProcessInfo.processInfo.environment
         if environment["CATON_SHOW_SETTINGS"] == "1" { settings.show() }
         if environment["CATON_PRACTICE"] == "1" {
             model.enterPractice()
-            if let section = environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) { model.show(.split(section)) }
+            if let section = environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) { model.panel.show(.split(section)) }
         }
         if let path = environment["CATON_SNAPSHOT"] {
             Task {
                 try? await Task.sleep(for: .seconds(4))
                 switch environment["CATON_OVERLAY"] {
                 case "peek": model.peek()
-                case "help": model.overlay = .help
-                case "commands": model.overlay = .commands
+                case "help": model.panel.overlay = .help
+                case "commands": model.panel.overlay = .commands
                 case "snooze": model.beginSnooze()
                 case "why": model.explain()
-                case "tips": model.overlay = .tips
-                case "zero": model.overlay = .zero
-                case "none": model.overlay = .none
+                case "tips": model.panel.overlay = .tips
+                case "zero": model.panel.overlay = .zero
+                case "none": model.panel.overlay = .none
                 case "nudge":
-                    model.selectFirst()
+                    model.panel.selectFirst()
                     model.nudge()
                 case "remind":
-                    model.selectFirst()
+                    model.panel.selectFirst()
                     model.beginReminder()
                 default: break
                 }
@@ -108,8 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         needsMeHotKey = HotKey(keyCode: combination.keyCode, modifiers: combination.modifierFlags) { [weak self] in
             guard let self else { return }
             if !self.model.isPanelVisible { self.statusItem?.showPanel() }
-            self.model.show(.split(.needsMe))
-            self.model.selectFirst()
+            self.model.panel.show(.split(.needsMe))
+            self.model.panel.selectFirst()
         }
         if needsMeHotKey == nil {
             preferences.needsMeHotKeyStatus = "\(combination.display) is taken by another app. Pick another."

@@ -27,9 +27,9 @@ struct Command: Identifiable {
         Command("ignore", "Ignore thread (never notify)", keys: "") { $0.ignore() },
         Command("later", "Save for later", keys: "b") { $0.toggleLater() },
         Command("read", "Mark read", keys: "m") { $0.markRead() },
-        Command("select", "Select for bulk", keys: "x") { $0.toggleChecked() },
+        Command("select", "Select for bulk", keys: "x") { $0.panel.toggleChecked() },
         Command("bundle", "Open or close a Feed bundle", keys: "→  ←") { model in
-            if let bundle = model.selectedBundle { model.toggleBundle(bundle.kind) } else { model.collapseSelection() }
+            if let bundle = model.panel.selectedBundle { model.panel.toggleBundle(bundle.kind) } else { model.panel.collapseSelection() }
         },
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },
@@ -38,25 +38,25 @@ struct Command: Identifiable {
         Command("ready", "Mark ready for review", keys: "⇧R") { $0.markReadyForReview() },
         Command("why", "Why is this here?", keys: "") { $0.explain() },
         Command("mute", "Mute this repository", keys: "") { $0.muteRepository() },
-        Command("zero", "Get me to zero…", keys: "") { $0.overlay = .zero },
-        Command("next-split", "Next split", keys: "⇥") { $0.cycleSplit(by: 1) },
-        Command("needs-me", "Go to Needs me", keys: "1") { $0.show(.split(.needsMe)) },
-        Command("team", "Go to Team", keys: "2") { $0.show(.split(.team)) },
-        Command("following", "Go to Following", keys: "3") { $0.show(.split(.following)) },
-        Command("feed", "Go to Feed", keys: "4") { $0.show(.split(.feed)) },
-        Command("my-pull-requests", "Go to My pull requests", keys: "g p") { $0.show(.myPullRequests) },
-        Command("snoozed", "Go to Snoozed", keys: "g s") { $0.show(.snoozed) },
-        Command("later-list", "Go to Later", keys: "g l") { $0.show(.later) },
-        Command("cleared", "Go to Cleared", keys: "g c") { $0.show(.cleared) },
-        Command("search", "Search", keys: "/") { $0.isSearching = true },
+        Command("zero", "Get me to zero…", keys: "") { $0.panel.overlay = .zero },
+        Command("next-split", "Next split", keys: "⇥") { $0.panel.cycleSplit(by: 1) },
+        Command("needs-me", "Go to Needs me", keys: "1") { $0.panel.show(.split(.needsMe)) },
+        Command("team", "Go to Team", keys: "2") { $0.panel.show(.split(.team)) },
+        Command("following", "Go to Following", keys: "3") { $0.panel.show(.split(.following)) },
+        Command("feed", "Go to Feed", keys: "4") { $0.panel.show(.split(.feed)) },
+        Command("my-pull-requests", "Go to My pull requests", keys: "g p") { $0.panel.show(.myPullRequests) },
+        Command("snoozed", "Go to Snoozed", keys: "g s") { $0.panel.show(.snoozed) },
+        Command("later-list", "Go to Later", keys: "g l") { $0.panel.show(.later) },
+        Command("cleared", "Go to Cleared", keys: "g c") { $0.panel.show(.cleared) },
+        Command("search", "Search", keys: "/") { $0.panel.isSearching = true },
         Command("save-search", "Save search as a split…", keys: "") { $0.beginSavingSearch() },
         Command("delete-search", "Delete this saved split", keys: "") { model in
-            if case .saved(let id) = model.section { model.deleteSavedSearch(id) }
+            if case .saved(let id) = model.panel.section { model.deleteSavedSearch(id) }
         },
-        Command("unread", "Unread only", keys: "a") { $0.unreadOnly.toggle() },
-        Command("group", "Group by repository", keys: "s") { $0.groupByRepository.toggle() },
+        Command("unread", "Unread only", keys: "a") { $0.panel.unreadOnly.toggle() },
+        Command("group", "Group by repository", keys: "s") { $0.panel.groupByRepository.toggle() },
         Command("refresh", "Refresh", keys: "r") { $0.inbox?.refresh() },
-        Command("keys", "Keyboard shortcuts", keys: "?") { $0.overlay = .help },
+        Command("keys", "Keyboard shortcuts", keys: "?") { $0.panel.overlay = .help },
         Command("practice", "Practice inbox (made-up threads) / leave it", keys: "") { model in
             model.isPractice ? model.exitPractice() : model.enterPractice()
         },
@@ -80,26 +80,26 @@ enum KeyRouter {
         let characters = event.characters ?? ""
         let isRepeat = event.isARepeat
 
-        switch model.overlay {
+        switch model.panel.overlay {
         case .snooze:
-            if event.keyCode == 53 { model.overlay = .none; return true }
-            if case .pullRequest(let id) = model.snoozeTarget {
+            if event.keyCode == 53 { model.panel.overlay = .none; return true }
+            if case .pullRequest(let id) = model.panel.snoozeTarget {
                 if characters == "x" {
-                    model.overlay = .none
+                    model.panel.overlay = .none
                     model.clearReminder(id)
                     return true
                 }
             } else if characters == "n" {
-                model.snoozeOnlyIfQuiet.toggle()
+                model.panel.snoozeOnlyIfQuiet.toggle()
                 return true
             }
             if let option = SnoozeOption.all.first(where: { $0.key == characters }) { model.chooseSnooze(option.date()) }
             return true
         case .help, .why:
-            model.overlay = .none
+            model.panel.overlay = .none
             return true
         case .peek:
-            model.overlay = .none
+            model.panel.overlay = .none
             switch characters {
             case "o", "\r": if model.open() { close() }
             case "e", "d": model.done()
@@ -111,10 +111,10 @@ enum KeyRouter {
             if event.keyCode == 53 || event.keyCode == 36 { model.finishWelcome(syncRuleClears: false) }
             return true
         case .commands, .saveSearch:
-            if event.keyCode == 53 { model.overlay = .none; return true }
+            if event.keyCode == 53 { model.panel.overlay = .none; return true }
             return false
         case .zero:
-            if event.keyCode == 53 { model.overlay = .none; return true }
+            if event.keyCode == 53 { model.panel.overlay = .none; return true }
             if !isRepeat, let option = model.zeroOptions.first(where: { $0.key == characters }) { model.getMeToZero(option) }
             return true
         case .tips:
@@ -127,46 +127,46 @@ enum KeyRouter {
 
         if flags == .command {
             switch event.keyCode {
-            case 125: model.selectLast(); return true
-            case 126: model.selectFirst(); return true
+            case 125: model.panel.selectLast(); return true
+            case 126: model.panel.selectFirst(); return true
             default: break
             }
             switch characters.lowercased() {
             case "z": model.undo(); return true
-            case "k": model.overlay = .commands; return true
+            case "k": model.panel.overlay = .commands; return true
             case ",": model.openSettings?(); return true
             default: return false
             }
         }
         if flags == .control {
             switch event.charactersIgnoringModifiers?.lowercased() {
-            case "f": model.moveSelection(by: page); return true
-            case "b": model.moveSelection(by: -page); return true
-            case "d": model.moveSelection(by: page / 2); return true
-            case "u": model.moveSelection(by: -page / 2); return true
+            case "f": model.panel.moveSelection(by: page); return true
+            case "b": model.panel.moveSelection(by: -page); return true
+            case "d": model.panel.moveSelection(by: page / 2); return true
+            case "u": model.panel.moveSelection(by: -page / 2); return true
             default: return false
             }
         }
         guard flags.isEmpty else { return false }
 
         switch event.keyCode {
-        case 125: model.moveSelection(by: 1); return true
-        case 126: model.moveSelection(by: -1); return true
-        case 124: model.expandSelection(); return true
-        case 123: model.collapseSelection(); return true
-        case 121: model.moveSelection(by: page); return true
-        case 116: model.moveSelection(by: -page); return true
-        case 115: model.selectFirst(); return true
-        case 119: model.selectLast(); return true
+        case 125: model.panel.moveSelection(by: 1); return true
+        case 126: model.panel.moveSelection(by: -1); return true
+        case 124: model.panel.expandSelection(); return true
+        case 123: model.panel.collapseSelection(); return true
+        case 121: model.panel.moveSelection(by: page); return true
+        case 116: model.panel.moveSelection(by: -page); return true
+        case 115: model.panel.selectFirst(); return true
+        case 119: model.panel.selectLast(); return true
         case 48:
-            model.cycleSplit(by: event.modifierFlags.contains(.shift) ? -1 : 1)
+            model.panel.cycleSplit(by: event.modifierFlags.contains(.shift) ? -1 : 1)
             return true
         case 53:
-            if model.isSearching || !model.searchQuery.isEmpty {
-                model.searchQuery = ""
-                model.isSearching = false
-            } else if !model.checked.isEmpty {
-                model.clearChecked()
+            if model.panel.isSearching || !model.panel.searchQuery.isEmpty {
+                model.panel.searchQuery = ""
+                model.panel.isSearching = false
+            } else if !model.panel.checked.isEmpty {
+                model.panel.clearChecked()
             } else {
                 close()
             }
@@ -178,14 +178,14 @@ enum KeyRouter {
             break
         }
 
-        if model.pendingG {
-            model.pendingG = false
+        if model.panel.pendingG {
+            model.panel.pendingG = false
             switch characters {
-            case "g": model.selectFirst()
-            case "s": model.show(.snoozed)
-            case "l": model.show(.later)
-            case "c": model.show(.cleared)
-            case "p": model.show(.myPullRequests)
+            case "g": model.panel.selectFirst()
+            case "s": model.panel.show(.snoozed)
+            case "l": model.panel.show(.later)
+            case "c": model.panel.show(.cleared)
+            case "p": model.panel.show(.myPullRequests)
             default: break
             }
             return true
@@ -193,41 +193,41 @@ enum KeyRouter {
 
         // Navigation repeats while held.
         switch characters {
-        case "j": model.moveSelection(by: 1); return true
-        case "k": model.moveSelection(by: -1); return true
-        case " ": model.moveSelection(by: page); return true
+        case "j": model.panel.moveSelection(by: 1); return true
+        case "k": model.panel.moveSelection(by: -1); return true
+        case " ": model.panel.moveSelection(by: page); return true
         default: break
         }
         // Everything else fires once per press, so holding `d` never empties the inbox.
         if isRepeat { return true }
         switch characters {
-        case "g": model.pendingG = true
-        case "G": model.selectLast()
+        case "g": model.panel.pendingG = true
+        case "G": model.panel.selectLast()
         case "o": if model.open() { close() }
         case "e", "d": model.done()
         case "h": model.beginSnooze()
         case "u": model.unsubscribe()
         case "b": model.toggleLater()
         case "m": model.markRead()
-        case "x": model.toggleChecked()
+        case "x": model.panel.toggleChecked()
         case "z": model.undo()
         case "y": model.copyLink()
         case "n": model.nudge()
         case "R": model.markReadyForReview()
         case "p": model.peek()
-        case "/": model.isSearching = true
-        case "a": model.unreadOnly.toggle()
-        case "s": model.groupByRepository.toggle()
+        case "/": model.panel.isSearching = true
+        case "a": model.panel.unreadOnly.toggle()
+        case "s": model.panel.groupByRepository.toggle()
         case "r": model.inbox?.refresh()
-        case "?": model.overlay = .help
-        case "1": model.show(.split(.needsMe))
-        case "2": model.show(.split(.team))
-        case "3": model.show(.split(.following))
-        case "4": model.show(.split(.feed))
+        case "?": model.panel.overlay = .help
+        case "1": model.panel.show(.split(.needsMe))
+        case "2": model.panel.show(.split(.team))
+        case "3": model.panel.show(.split(.following))
+        case "4": model.panel.show(.split(.feed))
         case "5", "6", "7", "8", "9":
             // Saved searches follow the four splits.
             let index = Int(characters)! - 5
-            if model.savedSearches.indices.contains(index) { model.show(.saved(model.savedSearches[index].id)) }
+            if (model.inbox?.savedSearches ?? []).indices.contains(index) { model.panel.show(.saved((model.inbox?.savedSearches ?? [])[index].id)) }
         default: return false
         }
         return true

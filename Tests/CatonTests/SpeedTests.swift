@@ -55,22 +55,22 @@ struct SpeedTests {
 
     /// What a `j` costs: move, then everything the panel reads to redraw.
     func keystroke() {
-        model.moveSelection(by: 1)
-        _ = model.visibleRows
-        _ = model.selectedBundle
-        for tab in model.tabs { _ = model.count(tab) }
+        model.panel.moveSelection(by: 1)
+        _ = model.panel.rows
+        _ = model.panel.selectedBundle
+        for tab in model.panel.tabs { _ = model.panel.count(tab) }
         _ = model.statusMessage
     }
 
     @Test func a_keystroke_in_feed_stays_within_budget() {
-        model.show(.split(.feed))
-        let cost = time("keystroke in Feed (\(model.visibleItems.count) threads)", keystroke)
+        model.panel.show(.split(.feed))
+        let cost = time("keystroke in Feed (\(model.panel.items.count) threads)", keystroke)
         #expect(cost < 50)
     }
 
     @Test func a_keystroke_while_searching_stays_within_budget() {
-        model.show(.split(.following))
-        model.searchQuery = "caching -repo:repo3"
+        model.panel.show(.split(.following))
+        model.panel.searchQuery = "caching -repo:repo3"
         let cost = time("keystroke in Following, searching", keystroke)
         #expect(cost < 50)
     }
@@ -78,13 +78,13 @@ struct SpeedTests {
     /// Typing in the search field changes the list's inputs with every
     /// letter, so each one lays the list out again.
     @Test func typing_a_search_stays_within_budget() {
-        model.show(.split(.feed))
+        model.panel.show(.split(.feed))
         let letters = Array("caching layout")
         var typed = ""
         let cost = time("a letter typed into the search", repeat: letters.count) {
             typed.append(letters[typed.count])
-            model.searchQuery = typed
-            _ = model.visibleRows
+            model.panel.searchQuery = typed
+            _ = model.panel.rows
         }
         #expect(cost < 50)
     }

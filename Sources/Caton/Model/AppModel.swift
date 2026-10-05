@@ -3,60 +3,24 @@ import Baton
 import CatonCore
 import Observation
 
-/// The app's root: the accounts and the session that shows, the panel's
-/// state, and the commands views and keys run. A command finds its rows in
-/// the panel, asks the session to change them, and says what happened.
+/// The app's root: the accounts and the session that shows, the panel, and
+/// the commands views and keys run. A command finds its rows in the panel,
+/// asks the session to change them, and says what happened.
 ///
 /// The inbox itself (feed, local state, queue, writes) is `Session`; signing
-/// in and switching accounts is `Accounts`. This file holds the root's
-/// state, alerts and the status strip; the list and its commands are in
-/// `AppModel+Inbox.swift`, My PRs' commands in `AppModel+PullRequests.swift`.
+/// in and switching accounts is `Accounts`; where the user is in the list is
+/// `Panel`. This file holds the root, alerts and the status strip; the
+/// commands are in `AppModel+Commands.swift` and, for My PRs,
+/// `AppModel+PullRequests.swift`.
 @MainActor
 @Observable
 final class AppModel {
-    /// What the list shows: a split, a saved search, or one of the local views.
-    enum Section: Hashable {
-        case split(Split)
-        case saved(UUID)
-        case myPullRequests
-        case snoozed
-        case later
-        case cleared
-    }
-
-    struct Toast: Identifiable, Equatable {
-        let id = UUID()
-        let message: String
-    }
-
-    /// A transient layer over the list that takes the keyboard.
-    enum Overlay: Equatable {
-        case none
-        case snooze
-        case commands
-        case help
-        case peek
-        case welcome
-        case zero
-        case why
-        case tips
-        case saveSearch
-    }
-
     /// The one message the status strip shows, the most urgent first.
     enum StatusMessage: Equatable {
         case error(String)
         case cooldown(until: Date)
         case warning(String)
         case update(Updates.Release)
-    }
-
-    /// What the snooze picker will act on.
-    enum SnoozeTarget: Equatable {
-        /// The selected or checked threads.
-        case threads
-        /// A reminder on one of the viewer's pull requests, by node id.
-        case pullRequest(String)
     }
 
     /// What the first sync of an account found, for the welcome summary.
@@ -68,33 +32,19 @@ final class AppModel {
 
     // MARK: Observed state
 
-    var section: Section = .split(.needsMe)
-    var selectedID: RowID?
-    var checked: Set<ItemID> = []
-    private(set) var toasts: [Toast] = []
     private(set) var welcome: Welcome?
-    var searchQuery = "" { didSet { reselect() } }
-    var isSearching = false
-    var overlay: Overlay = .none
-    /// The snooze picker's mode: come back only if nothing happens.
-    var snoozeOnlyIfQuiet = false
-    var snoozeTarget: SnoozeTarget = .threads
-    var unreadOnly = false { didSet { reselect() } }
-    var groupByRepository = true
-    /// Feed bundles the user opened.
-    var expandedBundles: Set<ThreadBundle.Kind> = []
     var isPanelVisible = false {
         didSet {
             guard isPanelVisible != oldValue else { return }
             if isPanelVisible {
-                repositoryOrder = []
+                panel.forgetOrder()
                 inbox?.refresh(force: false)
                 inbox?.subjects?.searchReviewRequests(force: true)
-                if welcome != nil { overlay = .welcome } else { offerTips() }
+                if welcome != nil { panel.overlay = .welcome } else { offerTips() }
             } else {
-                isSearching = false
-                checked.removeAll()
-                if overlay != .welcome { overlay = .none }
+                panel.isSearching = false
+                panel.clearChecked()
+                if panel.overlay != .welcome { panel.overlay = .none }
             }
         }
     }
@@ -105,6 +55,7 @@ final class AppModel {
 
     let preferences: Preferences
     let accounts: Accounts
+    let panel = Panel()
     let banners = Banners()
     let updates: Updates
     /// Opens the settings window; set by the app delegate.
@@ -118,18 +69,8 @@ final class AppModel {
 
     // MARK: Unobserved state
 
+    /// What `z` takes back, newest last; it belongs to the session showing.
     @ObservationIgnored var undoStack: [Session.Undo] = []
-    /// A `g` waiting for its second key.
-    @ObservationIgnored var pendingG = false
-    /// Repositories in the order the open panel first showed them.
-    @ObservationIgnored var repositoryOrder: [RepositoryName] = [] {
-        didSet { if repositoryOrder.isEmpty { listCache = nil } }
-    }
-    /// The current section's list, laid out once per change to what it
-    /// depends on; a keystroke reads it many times.
-    @ObservationIgnored var listCache: ListCache?
-    @ObservationIgnored var savedCountCache: (key: SavedCountKey, counts: [UUID: Int])?
-    @ObservationIgnored var selectedIndexHint = 0
     /// Opens a page; the browser by default.
     @ObservationIgnored let openURL: @MainActor (URL) -> Void
     /// No change reaches GitHub; for development against a real account.
@@ -160,7 +101,6 @@ final class AppModel {
 
     var isPractice: Bool { practice != nil }
 
-    var snapshot: InboxSnapshot { inbox?.snapshot ?? InboxSnapshot() }
 
     /// Baton's environment for the inbox, injected into views that own their
     /// queries.
@@ -178,10 +118,15 @@ final class AppModel {
 
     /// Takes a new account session: the panel starts over on it.
     private func adopt(_ session: Session?) {
-        resetPanel()
         welcome = nil
-        guard let session else { return }
-        listen(to: session)
+        if let session { listen(to: session) }
+        showInbox()
+    }
+
+    /// Points the panel at the session that shows; undo starts over with it.
+    private func showInbox() {
+        undoStack.removeAll()
+        panel.session = inbox
     }
 
     private func listen(to session: Session) {
@@ -193,12 +138,12 @@ final class AppModel {
             guard let self, let session else { return }
             self.polled(session, isFirst: isFirst)
         }
-        session.onWrite = { [weak self] message in self?.toast(message) }
+        session.onWrite = { [weak self] message in self?.panel.toast(message) }
     }
 
     /// After a session classified its inbox again.
     private func changed(_ session: Session, leftNeedsMe: Set<ItemID>) {
-        if session === inbox { reselect() }
+        if session === inbox { panel.inboxChanged() }
         // Banners speak for the account, not the practice inbox.
         guard session === accounts.session else { return }
         if session.hasPolled { announce(session, baseline: false) }
@@ -219,33 +164,20 @@ final class AppModel {
         offerDigest(session)
     }
 
-    /// Puts the panel back at the top of Needs me with nothing selected.
-    private func resetPanel() {
-        undoStack.removeAll()
-        repositoryOrder = []
-        expandedBundles = []
-        searchQuery = ""
-        isSearching = false
-        overlay = .none
-        section = .split(.needsMe)
-        selectedID = nil
-        checked.removeAll()
-    }
-
     // MARK: Accounts
 
     func switchAccount(to key: String) {
         guard !isPractice else { return }
         Task {
             await accounts.switchTo(key)
-            toast("Switched to \(key)")
+            panel.toast("Switched to \(key)")
         }
     }
 
     /// The next account in the list, for the command menu.
     func switchToNextAccount() {
         guard let next = accounts.nextKey else {
-            toast("Only one account is signed in")
+            panel.toast("Only one account is signed in")
             return
         }
         switchAccount(to: next)
@@ -273,17 +205,16 @@ final class AppModel {
         let session = Session.practice()
         listen(to: session)
         practice = session
-        resetPanel()
         session.start()
-        toast("Practice inbox: try e, h, u, x, z and ⌘K")
+        showInbox()
+        panel.toast("Practice inbox: try e, h, u, x, z and ⌘K")
     }
 
     func exitPractice() {
         guard let session = practice else { return }
         session.stop()
         practice = nil
-        resetPanel()
-        reselect()
+        showInbox()
     }
 
     // MARK: Alerts
@@ -322,14 +253,14 @@ final class AppModel {
             needsMe: session.snapshot.count(.needsMe),
             cleared: Dictionary(grouping: session.state.cleared.compactMap(\.rule), by: { $0 }).mapValues(\.count)
         )
-        if isPanelVisible { overlay = .welcome }
+        if isPanelVisible { panel.overlay = .welcome }
     }
 
     func finishWelcome(syncRuleClears: Bool) {
         preferences.syncRuleClears = syncRuleClears
         if let session = accounts.session { preferences.welcomedAccounts.insert(session.viewer.login) }
         welcome = nil
-        overlay = .none
+        panel.overlay = .none
         offerTips()
         if syncRuleClears { accounts.session?.syncRuleClearsToGitHub() }
     }
@@ -376,34 +307,24 @@ final class AppModel {
 
     /// Shows the three-key tip once, on a signed-in panel with nothing else over it.
     func offerTips() {
-        guard !preferences.tipsShown, case .signedIn = account, overlay == .none else { return }
-        overlay = .tips
+        guard !preferences.tipsShown, case .signedIn = account, panel.overlay == .none else { return }
+        panel.overlay = .tips
     }
 
     func dismissTips() {
         preferences.tipsShown = true
-        if overlay == .tips { overlay = .none }
+        if panel.overlay == .tips { panel.overlay = .none }
     }
 
     /// Shows the row a banner named, by its key.
     func reveal(_ key: String?) {
-        show(.split(.needsMe))
+        panel.show(.split(.needsMe))
         guard let key else { return }
         let id = ItemID(key: key)
-        if visibleItems.contains(where: { $0.id == id }) { select(.item(id)) }
+        if panel.items.contains(where: { $0.id == id }) { panel.select(.item(id)) }
     }
 
     // MARK: Feedback
-
-    func toast(_ message: String) {
-        let toast = Toast(message: message)
-        toasts.append(toast)
-        if toasts.count > 3 { toasts.removeFirst(toasts.count - 3) }
-        Task {
-            try? await Task.sleep(for: .seconds(3))
-            toasts.removeAll { $0.id == toast.id }
-        }
-    }
 
     var errorMessage: String? { inbox?.errorMessage }
 

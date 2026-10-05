@@ -27,16 +27,17 @@ struct PanelView: View {
 struct InboxView: View {
     @Bindable var model: AppModel
     let close: () -> Void
+    private var panel: Bindable<Panel> { Bindable(model.panel) }
     @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if model.isSearching || !model.searchQuery.isEmpty { searchField }
+            if model.panel.isSearching || !model.panel.searchQuery.isEmpty { searchField }
             Divider().opacity(0.5)
             ZStack(alignment: .bottom) {
                 content
-                ToastStack(toasts: model.toasts)
+                ToastStack(toasts: model.panel.toasts)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                     .allowsHitTesting(false)
@@ -46,7 +47,7 @@ struct InboxView: View {
             if let status = model.statusMessage { StatusStrip(message: status, model: model) }
             footer
         }
-        .onChange(of: model.isSearching) { _, searching in searchFocused = searching }
+        .onChange(of: model.panel.isSearching) { _, searching in searchFocused = searching }
     }
 
     // MARK: Header
@@ -76,7 +77,7 @@ struct InboxView: View {
                 }
                 .buttonStyle(.plain)
                 .help(model.preferences.detached ? "Back under the menu bar icon" : "Open in a window")
-                Button { model.overlay = .commands } label: {
+                Button { model.panel.overlay = .commands } label: {
                     Text("⌘K").font(.system(size: 10, weight: .medium, design: .monospaced))
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
@@ -88,29 +89,21 @@ struct InboxView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
                         ForEach(Split.allCases, id: \.self) { split in
-                            SectionTab(title: split.title, count: model.snapshot.count(split), isSelected: model.section == .split(split), isPrimary: split == .needsMe) {
-                                model.show(.split(split))
+                            SectionTab(title: split.title, count: model.panel.count(.split(split)), isSelected: model.panel.section == .split(split), isPrimary: split == .needsMe) {
+                                model.panel.show(.split(split))
                             }
                         }
                         // Saved searches, as splits of their own.
-                        ForEach(model.savedSearches) { saved in
-                            SectionTab(title: saved.name, count: model.count(.saved(saved.id)), isSelected: model.section == .saved(saved.id), isPrimary: false) {
-                                model.show(.saved(saved.id))
-                            }
-                            .contextMenu {
-                                Button("Delete \(saved.name)") { model.deleteSavedSearch(saved.id) }
-                            }
-                            .help(saved.query)
-                        }
+                        ForEach(model.inbox?.savedSearches ?? []) { saved in savedTab(saved) }
                     }
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 Spacer(minLength: 0)
                 Menu {
-                    Button("My pull requests (\(model.count(.myPullRequests)))") { model.show(.myPullRequests) }
-                    Button("Snoozed (\(model.count(.snoozed)))") { model.show(.snoozed) }
-                    Button("Later (\(model.count(.later)))") { model.show(.later) }
-                    Button("Cleared (\(model.count(.cleared)))") { model.show(.cleared) }
+                    Button("My pull requests (\(model.panel.count(.myPullRequests)))") { model.panel.show(.myPullRequests) }
+                    Button("Snoozed (\(model.panel.count(.snoozed)))") { model.panel.show(.snoozed) }
+                    Button("Later (\(model.panel.count(.later)))") { model.panel.show(.later) }
+                    Button("Cleared (\(model.panel.count(.cleared)))") { model.panel.show(.cleared) }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 11))
                 }
@@ -125,23 +118,33 @@ struct InboxView: View {
         .padding(.bottom, 8)
     }
 
+    private func savedTab(_ saved: SavedSearch) -> some View {
+        SectionTab(title: saved.name, count: model.panel.count(.saved(saved.id)), isSelected: model.panel.section == .saved(saved.id), isPrimary: false) {
+            model.panel.show(.saved(saved.id))
+        }
+        .contextMenu {
+            Button("Delete \(saved.name)") { model.deleteSavedSearch(saved.id) }
+        }
+        .help(saved.query)
+    }
+
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.system(size: 11))
-            TextField("Filter by title or repository", text: $model.searchQuery)
+            TextField("Filter by title or repository", text: panel.searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .focused($searchFocused)
-                .onSubmit { model.isSearching = false }
+                .onSubmit { model.panel.isSearching = false }
                 .onKeyPress(.tab) {
-                    model.isSearching = false
+                    model.panel.isSearching = false
                     return .handled
                 }
                 .onExitCommand {
-                    model.searchQuery = ""
-                    model.isSearching = false
+                    model.panel.searchQuery = ""
+                    model.panel.isSearching = false
                 }
-            if !model.searchQuery.isEmpty, case .split = model.section {
+            if !model.panel.searchQuery.isEmpty, case .split = model.panel.section {
                 Button("Save as split") { model.beginSavingSearch() }
                     .buttonStyle(.link)
                     .font(.system(size: 11))
@@ -154,7 +157,7 @@ struct InboxView: View {
     // MARK: List
 
     @ViewBuilder private var content: some View {
-        switch model.section {
+        switch model.panel.section {
         case .cleared:
             ClearedList(model: model)
         case .myPullRequests:
@@ -167,9 +170,9 @@ struct InboxView: View {
                 MyPullRequestsView(pullRequests: .init(), model: model)
             }
         default:
-            let rows = model.visibleRows
+            let rows = model.panel.rows
             if rows.isEmpty {
-                EmptyState(model: model, filtered: !model.searchQuery.isEmpty || model.unreadOnly)
+                EmptyState(model: model, filtered: !model.panel.searchQuery.isEmpty || model.panel.unreadOnly)
             } else {
                 list(rows)
             }
@@ -177,7 +180,7 @@ struct InboxView: View {
     }
 
     private func list(_ rows: [ListRow]) -> some View {
-        let waiting = model.section == .split(.needsMe)
+        let waiting = model.panel.section == .split(.needsMe)
         // Threads inside a bot's bundle come from many repositories.
         let acrossRepositories = Set(rows.flatMap { row -> [ItemID] in
             guard case .bundle(let bundle, true) = row, case .bot = bundle.kind else { return [] }
@@ -200,26 +203,26 @@ struct InboxView: View {
                             BundleRow(
                                 bundle: bundle,
                                 isExpanded: isExpanded,
-                                isSelected: model.selectedID == row.id,
-                                onToggle: { model.toggleBundle(bundle.kind) },
+                                isSelected: model.panel.selectedID == row.id,
+                                onToggle: { model.panel.toggleBundle(bundle.kind) },
                                 onDone: { model.done(row.id) }
                             )
                             .id(row.id)
                         case .item(let item, let depth):
                             ThreadRow(
                                 item: item,
-                                isSelected: model.selectedID == row.id,
-                                isChecked: model.checked.contains(item.id),
+                                isSelected: model.panel.selectedID == row.id,
+                                isChecked: model.panel.checked.contains(item.id),
                                 showsWaiting: waiting,
-                                showsRepository: !model.groupByRepository || acrossRepositories.contains(item.id),
+                                showsRepository: !model.panel.groupByRepository || acrossRepositories.contains(item.id),
                                 lenses: model.lenses(for: item.id),
                                 spokenState: model.spokenState(for: item),
                                 fallback: model.isPractice ? model.facts(for: item.id) : nil,
                                 onOpen: {
-                                    model.select(row.id)
+                                    model.panel.select(row.id)
                                     if model.open(row.id) { close() }
                                 },
-                                onToggleCheck: { model.toggleChecked(row.id) },
+                                onToggleCheck: { model.panel.toggleChecked(row.id) },
                                 onDone: { model.done(row.id) },
                                 onSnooze: { model.beginSnooze(row.id) },
                                 onUnsubscribe: { model.unsubscribe(row.id) }
@@ -230,7 +233,7 @@ struct InboxView: View {
                     }
                 }
             }
-            .onChange(of: model.selectedID) { _, id in
+            .onChange(of: model.panel.selectedID) { _, id in
                 guard let id else { return }
                 proxy.scrollTo(id)
             }
@@ -240,7 +243,7 @@ struct InboxView: View {
     // MARK: Overlays
 
     @ViewBuilder private var overlay: some View {
-        switch model.overlay {
+        switch model.panel.overlay {
         case .none:
             EmptyView()
         case .snooze:
@@ -249,18 +252,18 @@ struct InboxView: View {
             CommandMenu(model: model, close: close)
         case .help:
             KeymapOverlay()
-                .onTapGesture { model.overlay = .none }
+                .onTapGesture { model.panel.overlay = .none }
         case .peek:
-            if let item = model.selectedItem {
+            if let item = model.panel.selectedItem {
                 PeekView(item: item)
-                    .onTapGesture { model.overlay = .none }
+                    .onTapGesture { model.panel.overlay = .none }
             }
         case .zero:
             ZeroPicker(model: model)
         case .why:
-            if let item = model.selectedItem {
+            if let item = model.panel.selectedItem {
                 WhyCard(item: item, actor: model.facts(for: item.id)?.author?.login)
-                    .onTapGesture { model.overlay = .none }
+                    .onTapGesture { model.panel.overlay = .none }
             }
         case .tips:
             TipsCard()
@@ -281,25 +284,25 @@ struct InboxView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if model.section == .myPullRequests {
+            if model.panel.section == .myPullRequests {
                 Hint(key: "⏎", label: "open")
                 Hint(key: "n", label: "nudge")
                 Hint(key: "h", label: "remind")
                 Hint(key: "y", label: "copy link")
                 Hint(key: "?", label: "keys")
-            } else if model.checked.isEmpty, model.selectedBundle != nil {
+            } else if model.panel.checked.isEmpty, model.panel.selectedBundle != nil {
                 Hint(key: "⏎", label: "open bundle")
                 Hint(key: "e", label: "done all")
                 Hint(key: "x", label: "select all")
                 Hint(key: "?", label: "keys")
-            } else if model.checked.isEmpty {
+            } else if model.panel.checked.isEmpty {
                 Hint(key: "e", label: "done")
                 Hint(key: "h", label: "snooze")
                 Hint(key: "u", label: "unsub")
                 Hint(key: "⏎", label: "open")
                 Hint(key: "?", label: "keys")
             } else {
-                Text("\(model.checked.count) selected").font(.system(size: 11)).foregroundStyle(Color.accentColor)
+                Text("\(model.panel.checked.count) selected").font(.system(size: 11)).foregroundStyle(Color.accentColor)
                 Hint(key: "e", label: "done all")
                 Hint(key: "esc", label: "clear")
             }
@@ -346,7 +349,7 @@ struct EmptyState: View {
     var body: some View {
         VStack(spacing: 6) {
             Spacer()
-            if !filtered, model.section == .split(.needsMe) {
+            if !filtered, model.panel.section == .split(.needsMe) {
                 // Caught up: the logo's happy cat.
                 LogoImage(size: 48)
             } else {
@@ -355,10 +358,10 @@ struct EmptyState: View {
                     .foregroundStyle(.tertiary)
             }
             Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
-            if !filtered, case .split = model.section, clearedToday > 0 {
+            if !filtered, case .split = model.panel.section, clearedToday > 0 {
                 HStack(spacing: 4) {
                     Text("\(clearedToday) cleared by rules today").foregroundStyle(.tertiary)
-                    Button("View") { model.show(.cleared) }.buttonStyle(.link)
+                    Button("View") { model.panel.show(.cleared) }.buttonStyle(.link)
                 }
                 .font(.system(size: 11))
             }
@@ -373,10 +376,10 @@ struct EmptyState: View {
 
     private var title: String {
         if filtered { return "No matches" }
-        switch model.section {
+        switch model.panel.section {
         case .split(.needsMe): return "Nothing needs you"
         case .split: return "All clear"
-        case .saved(let id): return "Nothing matches \(model.savedSearch(id)?.query ?? "this search")"
+        case .saved(let id): return "Nothing matches \(model.inbox?.savedSearch(id)?.query ?? "this search")"
         case .myPullRequests: return "No open pull requests"
         case .snoozed: return "Nothing snoozed"
         case .later: return "Nothing saved for later"
@@ -428,13 +431,13 @@ struct SnoozePicker: View {
 
     /// The pull request a reminder is being set on, if that is what this is.
     private var pullRequest: String? {
-        if case .pullRequest(let id) = model.snoozeTarget { return id }
+        if case .pullRequest(let id) = model.panel.snoozeTarget { return id }
         return nil
     }
 
     private var title: String {
         if pullRequest != nil { return "Remind me if nobody answers by" }
-        return model.snoozeOnlyIfQuiet ? "Remind me if nothing happens by" : "Snooze until"
+        return model.panel.snoozeOnlyIfQuiet ? "Remind me if nothing happens by" : "Snooze until"
     }
 
     var body: some View {
@@ -456,7 +459,7 @@ struct SnoozePicker: View {
             if let pullRequest {
                 if model.followUp(for: pullRequest) != nil {
                     Button {
-                        model.overlay = .none
+                        model.panel.overlay = .none
                         model.clearReminder(pullRequest)
                     } label: {
                         HStack {
@@ -472,14 +475,14 @@ struct SnoozePicker: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Toggle(isOn: $model.snoozeOnlyIfQuiet) {
+                Toggle(isOn: Bindable(model.panel).snoozeOnlyIfQuiet) {
                     HStack {
                         Text("n").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                         Text("Only if nothing happens").font(.system(size: 12))
                     }
                 }
                 .toggleStyle(.checkbox)
-                Text(model.snoozeOnlyIfQuiet
+                Text(model.panel.snoozeOnlyIfQuiet
                     ? "Comes back on any new activity; at the time, only if there was none."
                     : "Comes back early if something new needs you.")
                     .font(.system(size: 10))
@@ -503,14 +506,14 @@ struct SaveSearchPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Save search as a split").font(.system(size: 12, weight: .semibold))
-            Text(model.searchQuery).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(2)
+            Text(model.panel.searchQuery).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(2)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { model.saveSearch(named: name) }
             HStack {
                 Spacer()
-                Button("Cancel") { model.overlay = .none }
+                Button("Cancel") { model.panel.overlay = .none }
                 Button("Save") { model.saveSearch(named: name) }.keyboardShortcut(.defaultAction)
             }
             .controlSize(.small)
@@ -677,7 +680,7 @@ struct CommandMenu: View {
     private func run() {
         guard commands.indices.contains(index) else { return }
         let command = commands[index]
-        model.overlay = .none
+        model.panel.overlay = .none
         command.run(model)
         if command.closesPanel { close() }
     }
@@ -731,8 +734,8 @@ struct SettingsMenu: View {
                 }
             }
             Section("View") {
-                Toggle("Group by repository", isOn: $model.groupByRepository)
-                Toggle("Unread only", isOn: $model.unreadOnly)
+                Toggle("Group by repository", isOn: Bindable(model.panel).groupByRepository)
+                Toggle("Unread only", isOn: Bindable(model.panel).unreadOnly)
             }
             Section("Accounts") {
                 ForEach(model.accounts.all, id: \.key) { account in
@@ -776,7 +779,7 @@ struct Hint: View {
 }
 
 struct ToastStack: View {
-    let toasts: [AppModel.Toast]
+    let toasts: [Panel.Toast]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -817,7 +820,7 @@ struct StatusStrip: View {
             case .update(let release):
                 Button("Copy command") {
                     model.updates.copyUpgradeCommand()
-                    model.toast("Copied \(Updates.upgradeCommand)")
+                    model.panel.toast("Copied \(Updates.upgradeCommand)")
                 }
                 .buttonStyle(.link)
                 .font(.system(size: 11))

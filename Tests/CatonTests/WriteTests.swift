@@ -93,8 +93,8 @@ struct WriteTests {
         session.writeGrace = .milliseconds(50)
         model.accounts.use(session)
         try await subjects.myPullRequests.refetch()
-        model.show(.myPullRequests)
-        model.select(.pullRequest("PR_7"))
+        model.panel.show(.myPullRequests)
+        model.panel.select(.pullRequest("PR_7"))
     }
 
     var requestedAt: Date? {
@@ -163,7 +163,7 @@ struct WriteTests {
         await test.until { await !test.github.mutations.isEmpty }
         #expect(group() == .waiting)
         await test.github.reply(Data(#"{"data":{"markPullRequestReadyForReview":{"pullRequest":{"id":"PR_7","isDraft":false}}}}"#.utf8))
-        await test.until { test.model.toasts.contains { $0.message.hasSuffix("is ready for review") } }
+        await test.until { test.model.panel.toasts.contains { $0.message.hasSuffix("is ready for review") } }
         #expect(group() == .waiting)
         #expect(test.model.errorMessage == nil)
     }

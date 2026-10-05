@@ -76,7 +76,7 @@ struct MyPullRequestList: View {
             standing: node.pullRequestStanding,
             followUp: model.followUp(for: node.id),
             pendingNote: model.pendingWriteNote(for: node.id),
-            isSelected: model.selectedID == .pullRequest(node.id),
+            isSelected: model.panel.selectedID == .pullRequest(node.id),
             onOpen: { model.openPullRequest(node.id) },
             onRemind: { model.beginReminder(node.id) },
             onNudge: { model.nudge(node.id) },
@@ -117,7 +117,7 @@ struct MyPullRequestList: View {
                         }
                     }
                 }
-                .onChange(of: model.selectedID) { _, id in
+                .onChange(of: model.panel.selectedID) { _, id in
                     guard let id else { return }
                     proxy.scrollTo(id)
                 }
