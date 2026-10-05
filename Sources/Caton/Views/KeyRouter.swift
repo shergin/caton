@@ -55,7 +55,7 @@ struct Command: Identifiable {
         },
         Command("unread", "Unread only", keys: "a") { $0.unreadOnly.toggle() },
         Command("group", "Group by repository", keys: "s") { $0.groupByRepository.toggle() },
-        Command("refresh", "Refresh", keys: "r") { $0.refresh() },
+        Command("refresh", "Refresh", keys: "r") { $0.inbox?.refresh() },
         Command("keys", "Keyboard shortcuts", keys: "?") { $0.overlay = .help },
         Command("practice", "Practice inbox (made-up threads) / leave it", keys: "") { model in
             model.isPractice ? model.exitPractice() : model.enterPractice()
@@ -218,7 +218,7 @@ enum KeyRouter {
         case "/": model.isSearching = true
         case "a": model.unreadOnly.toggle()
         case "s": model.groupByRepository.toggle()
-        case "r": model.refresh()
+        case "r": model.inbox?.refresh()
         case "?": model.overlay = .help
         case "1": model.show(.split(.needsMe))
         case "2": model.show(.split(.team))

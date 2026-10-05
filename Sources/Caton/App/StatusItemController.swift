@@ -168,7 +168,7 @@ final class StatusItemController: NSObject {
         statusItem.menu = nil
     }
 
-    @objc private func refresh() { model.refresh() }
+    @objc private func refresh() { model.inbox?.refresh() }
     @objc private func settings() { model.openSettings?() }
     @objc private func checkForUpdates() { model.checkForUpdates() }
 

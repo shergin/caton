@@ -4,6 +4,13 @@ import Foundation
 import Testing
 @testable import Caton
 
+/// GitHub's REST feed with nothing new: every poll is a 304.
+struct NotModified: HTTPClient {
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        (Data(), HTTPURLResponse(url: request.url!, statusCode: 304, httpVersion: "HTTP/1.1", headerFields: nil)!)
+    }
+}
+
 /// Nudge end to end through Baton, against a canned GitHub: the undo window
 /// holds the write, the optimistic response shows the moment it is sent,
 /// GitHub's answer replaces it, and a refusal takes it back.
@@ -67,15 +74,24 @@ struct WriteTests {
         model = AppModel(
             preferences: Preferences(defaults: UserDefaults(suiteName: "caton-writes-\(UUID().uuidString)")!),
             persistence: StatePersistence(directory: directory),
+            dryRun: false,
             openURL: { _ in }
         )
-        model.writeGrace = .milliseconds(50)
         environment = Baton.Environment(transport: github)
     }
 
     func open() async throws {
         let subjects = SubjectStore(environment: environment, viewerID: "U_me", fetchedActivity: [:])
-        model.use(environment, subjects: subjects, viewer: Viewer(login: "me", nodeID: "U_me", scopes: ["repo"]))
+        // The feed answers that nothing changed; only GraphQL is played.
+        let rest = GitHubREST(token: "test", client: NotModified())
+        let session = Session(
+            viewer: Viewer(login: "me", nodeID: "U_me", scopes: ["repo"]),
+            source: .github(.init(rest: rest, graph: environment, subjects: subjects, image: nil)),
+            persistence: nil,
+            dryRun: false
+        )
+        session.writeGrace = .milliseconds(50)
+        model.accounts.use(session)
         try await subjects.myPullRequests.refetch()
         model.show(.myPullRequests)
         model.select(.pullRequest("PR_7"))
@@ -96,7 +112,7 @@ struct WriteTests {
         model.nudge()
         #expect(model.pendingWriteNote(for: "PR_7") == "asking again…")
         model.undo()
-        #expect(model.pendingWrites.isEmpty)
+        #expect(model.inbox!.pendingWrites.isEmpty)
         try await Task.sleep(for: .milliseconds(150))
         #expect(await github.mutations.isEmpty)
     }
@@ -142,7 +158,7 @@ struct WriteTests {
         }
         #expect(group() == .drafts)
         test.model.nudge()
-        #expect(test.model.pendingWrites.isEmpty)
+        #expect(test.model.inbox!.pendingWrites.isEmpty)
         test.model.markReadyForReview()
         await test.until { await !test.github.mutations.isEmpty }
         #expect(group() == .waiting)

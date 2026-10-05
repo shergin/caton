@@ -22,10 +22,10 @@ struct SignInView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 LogoImage(size: 40)
-                Text(model.isAddingAccount ? "Add an account" : "Caton").font(.system(size: 20, weight: .semibold))
+                Text(model.accounts.isAdding ? "Add an account" : "Caton").font(.system(size: 20, weight: .semibold))
                 Spacer()
-                if model.isAddingAccount {
-                    Button("Cancel") { model.cancelAddingAccount() }
+                if model.accounts.isAdding {
+                    Button("Cancel") { model.accounts.cancelAdding() }
                 }
             }
             Text("The GitHub inbox that shows only what needs you. Sign in to read your notifications; your token stays on this Mac.")
@@ -38,14 +38,14 @@ struct SignInView: View {
                     ProgressView().controlSize(.small)
                     Text("Signing in…").font(.system(size: 12))
                 }
-            } else if case .waiting(let code, let url) = model.deviceSignIn {
+            } else if case .waiting(let code, let url) = model.accounts.deviceSignIn {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Enter this code on GitHub (copied):").font(.system(size: 12))
                     Text(code).font(.system(size: 24, weight: .semibold, design: .monospaced)).textSelection(.enabled)
                     HStack {
                         Link("Open \(url.host() ?? "github.com")", destination: url).font(.system(size: 12))
                         Spacer()
-                        Button("Cancel") { model.cancelSignIn() }
+                        Button("Cancel") { model.accounts.cancelSignIn() }
                     }
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
@@ -56,7 +56,7 @@ struct SignInView: View {
                 methods
             }
 
-            if let error = model.signInError {
+            if let error = model.accounts.signInError {
                 Text(error).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
@@ -83,7 +83,7 @@ struct SignInView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if host.isDotCom {
                 Button {
-                    model.signInWithDeviceFlow()
+                    model.accounts.signInWithDeviceFlow()
                 } label: {
                     Label("Sign in with GitHub", systemImage: "person.badge.key").frame(maxWidth: .infinity)
                 }
@@ -95,7 +95,7 @@ struct SignInView: View {
 
             if GitHubCLI.executable != nil {
                 Button {
-                    model.signInWithGitHubCLI(host: host)
+                    model.accounts.signInWithGitHubCLI(host: host)
                 } label: {
                     Label(host.isDotCom ? "Use my GitHub CLI login" : "Use my GitHub CLI login for \(host.name)", systemImage: "terminal").frame(maxWidth: .infinity)
                 }
@@ -107,8 +107,8 @@ struct SignInView: View {
             HStack {
                 SecureField("ghp_…", text: $token)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.signIn(token: token, host: host) }
-                Button("Sign in") { model.signIn(token: token, host: host) }
+                    .onSubmit { model.accounts.signIn(token: token, host: host) }
+                Button("Sign in") { model.accounts.signIn(token: token, host: host) }
                     .disabled(token.isEmpty)
             }
             Link("Create a token with the right scopes →", destination: tokenURL)
@@ -127,7 +127,7 @@ struct SignInView: View {
             }
             .font(.system(size: 11))
             Divider().padding(.vertical, 2)
-            if !model.isAddingAccount {
+            if !model.accounts.isAdding {
                 Button {
                     model.enterPractice()
                 } label: {

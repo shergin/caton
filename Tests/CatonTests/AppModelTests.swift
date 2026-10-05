@@ -30,20 +30,31 @@ struct AppModelTests {
 
     let opened = Opened()
     let model: AppModel
+    let directory = FileManager.default.temporaryDirectory.appending(path: "caton-tests-\(UUID().uuidString)")
 
+    /// A model signed in to a session connected to nothing, saving to a
+    /// throwaway folder.
     init() {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "caton-tests-\(UUID().uuidString)")
         let opened = opened
         model = AppModel(
             preferences: Preferences(defaults: UserDefaults(suiteName: "caton-tests-\(UUID().uuidString)")!),
             persistence: StatePersistence(directory: directory),
+            dryRun: false,
             openURL: { opened.urls.append($0) }
         )
+        model.accounts.use(Session(
+            viewer: Viewer(login: "me", nodeID: "U_me", scopes: ["repo"]),
+            source: .local(facts: [:]),
+            persistence: StatePersistence(directory: directory),
+            dryRun: false
+        ))
     }
 
+    var session: Session { model.accounts.session! }
+
     func load(_ threads: [NotificationThread]) {
-        model.threads = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
-        model.recompute()
+        session.threads = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
+        session.recompute()
     }
 
     func thread(_ id: String, reason: Reason = .mention, repository: String = "acme/web", age: TimeInterval = 0, title: String? = nil) -> NotificationThread {
@@ -73,7 +84,7 @@ struct AppModelTests {
         model.done()
         #expect(model.visibleItems.map(\.id.key) == ["2", "3"])
         #expect(model.selectedID == row("2"))
-        #expect(model.state.queue.actions.map(\.verb) == [.done])
+        #expect(session.state.queue.actions.map(\.verb) == [.done])
         #expect(model.needsMeCount == 2)
     }
 
@@ -82,7 +93,7 @@ struct AppModelTests {
         model.done()
         model.undo()
         #expect(model.visibleItems.map(\.id.key) == ["1", "2", "3"])
-        #expect(model.state.queue.isEmpty)
+        #expect(session.state.queue.isEmpty)
         #expect(model.selectedID == row("1"))
     }
 
@@ -92,7 +103,7 @@ struct AppModelTests {
         model.toggleChecked(row("3"))
         model.done()
         #expect(model.visibleItems.map(\.id.key) == ["2"])
-        #expect(Set(model.state.queue.actions.map(\.batch)).count == 1)
+        #expect(Set(session.state.queue.actions.map(\.batch)).count == 1)
         #expect(model.checked.isEmpty)
     }
 
@@ -110,7 +121,7 @@ struct AppModelTests {
         #expect(model.open())
         #expect(opened.urls.map(\.lastPathComponent) == ["1"])
         #expect(model.visibleItems.first?.isUnread == false)
-        #expect(model.state.queue.actions.map(\.verb) == [.markRead])
+        #expect(session.state.queue.actions.map(\.verb) == [.markRead])
     }
 
     @Test func get_me_to_zero_never_clears_needs_me() {
@@ -128,11 +139,11 @@ struct AppModelTests {
         #expect(options == ["1": 2, "2": 0, "3": 1, "4": 0, "5": 0])
         model.getMeToZero(model.zeroOptions[0])
         #expect(model.visibleItems.isEmpty)
-        #expect(model.cleared.count == 2)
+        #expect(session.state.cleared.count == 2)
         #expect(model.needsMeCount == 1)
         model.undo()
         #expect(model.visibleItems.count == 2)
-        #expect(model.cleared.isEmpty)
+        #expect(session.state.cleared.isEmpty)
     }
 
     @Test func a_busy_feed_repository_is_one_row_that_done_clears_whole() {
@@ -142,7 +153,7 @@ struct AppModelTests {
         #expect(model.selectedID == .bundle(.repository("acme/web")))
         model.done()
         #expect(model.visibleRows.map(\.id.label) == ["header:acme/api", "8"])
-        #expect(model.state.queue.actions.count == 5)
+        #expect(session.state.queue.actions.count == 5)
         #expect(model.needsMeCount == 1)
     }
 
@@ -160,8 +171,8 @@ struct AppModelTests {
 
     @Test func the_status_strip_shows_an_error_before_a_cooldown() {
         let until = Date.now.addingTimeInterval(120)
-        model.noteCooldown(until)
-        model.errorMessage = "Offline"
+        session.noteCooldown(until)
+        session.errorMessage = "Offline"
         #expect(model.statusMessage == .error("Offline"))
         model.dismissError()
         #expect(model.statusMessage == .cooldown(until: until))
@@ -201,7 +212,7 @@ struct AppModelTests {
         #expect(!model.isPractice)
         #expect(model.needsMeCount == 3)
         #expect(model.visibleItems.map(\.id.key) == ["1", "2", "3"])
-        #expect(model.state.queue.isEmpty)
+        #expect(session.state.queue.isEmpty)
     }
 
     @Test func each_account_keeps_its_own_saved_inbox() throws {
@@ -230,21 +241,14 @@ struct AppModelTests {
         #expect(persistence.load().threads.map(\.id) == ["7"])
     }
 
-    @Test func a_save_during_practice_writes_the_real_inbox() async throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "caton-practice-\(UUID().uuidString)")
-        let persistence = StatePersistence(directory: directory)
-        let model = AppModel(
-            preferences: Preferences(defaults: UserDefaults(suiteName: "caton-tests-\(UUID().uuidString)")!),
-            persistence: persistence,
-            openURL: { _ in }
-        )
-        model.threads = ["1": thread("1")]
-        model.recompute()
+    @Test func practice_never_reaches_the_accounts_saved_inbox() async throws {
+        load([thread("1")])
         model.enterPractice()
         model.done()
         try await Task.sleep(for: .milliseconds(700))
-        #expect(persistence.load().threads.map(\.id) == ["1"])
-        #expect(persistence.load().state.queue.isEmpty)
+        let saved = StatePersistence(directory: directory).load()
+        #expect(saved.threads.map(\.id) == ["1"])
+        #expect(saved.state.queue.isEmpty)
     }
 
     func followUp(until: Date) -> FollowUp {
@@ -253,15 +257,15 @@ struct AppModelTests {
 
     @Test func a_due_reminder_joins_needs_me_until_done() {
         loadThree()
-        model.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(-60))
-        model.recompute()
+        session.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(-60))
+        session.recompute()
         let reminder = model.snapshot.items(in: .needsMe).first { $0.id == .followUp("PR_7") }
         #expect(reminder?.classification.badge == .followUp)
         #expect(reminder?.resurfacing == .noActivity)
         #expect(model.needsMeCount == 4)
         model.done(row("followup:PR_7"))
-        #expect(model.state.followUps.isEmpty)
-        #expect(model.state.queue.isEmpty)
+        #expect(session.state.followUps.isEmpty)
+        #expect(session.state.queue.isEmpty)
         #expect(model.needsMeCount == 3)
         model.undo()
         #expect(model.needsMeCount == 4)
@@ -269,14 +273,14 @@ struct AppModelTests {
 
     @Test func a_reminder_not_yet_due_stays_out_and_snoozing_one_moves_it() {
         loadThree()
-        model.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(3600))
-        model.recompute()
+        session.state.followUps["PR_7"] = followUp(until: .now.addingTimeInterval(3600))
+        session.recompute()
         #expect(model.needsMeCount == 3)
-        model.state.followUps["PR_7"]?.until = .now.addingTimeInterval(-1)
-        model.recompute()
+        session.state.followUps["PR_7"]?.until = .now.addingTimeInterval(-1)
+        session.recompute()
         let later = Date.now.addingTimeInterval(7200)
         model.snooze(row("followup:PR_7"), until: later)
-        #expect(model.state.followUps["PR_7"]?.until == later)
+        #expect(session.state.followUps["PR_7"]?.until == later)
         #expect(model.needsMeCount == 3)
     }
 

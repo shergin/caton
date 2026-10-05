@@ -65,7 +65,7 @@ struct InboxView: View {
                 } else if model.dryRun {
                     Text("DRY RUN").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
                 }
-                if model.isSyncing { ProgressView().controlSize(.mini) }
+                if model.inbox?.isSyncing == true { ProgressView().controlSize(.mini) }
                 Spacer()
                 Button {
                     model.preferences.detached ? model.attach?() : model.detach?()
@@ -368,7 +368,7 @@ struct EmptyState: View {
     }
 
     private var clearedToday: Int {
-        model.cleared.filter { $0.rule != nil && Calendar.current.isDateInToday($0.at) }.count
+        (model.inbox?.state.cleared ?? []).filter { $0.rule != nil && Calendar.current.isDateInToday($0.at) }.count
     }
 
     private var title: String {
@@ -391,12 +391,12 @@ struct ClearedList: View {
     let model: AppModel
 
     var body: some View {
-        if model.cleared.isEmpty {
+        if (model.inbox?.state.cleared ?? []).isEmpty {
             EmptyState(model: model, filtered: false)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.cleared.reversed()) { entry in
+                    ForEach((model.inbox?.state.cleared ?? []).reversed()) { entry in
                         HStack(spacing: 8) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.reference).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
@@ -708,18 +708,25 @@ struct KeymapOverlay: View {
 struct SettingsMenu: View {
     @Bindable var model: AppModel
 
+    /// `@octocat`, or `@octocat on github.acme.com`.
+    static func name(of account: Viewer) -> String {
+        account.host.isDotCom ? "@\(account.login)" : "@\(account.login) on \(account.host.name)"
+    }
+
     var body: some View {
         Menu {
-            Section("Rules") {
-                ForEach(Rule.allCases, id: \.self) { rule in
-                    Toggle(rule.title, isOn: Binding(get: { model.isEnabled(rule) }, set: { model.setEnabled(rule, $0) }))
+            if let inbox = model.inbox {
+                Section("Rules") {
+                    ForEach(Rule.allCases, id: \.self) { rule in
+                        Toggle(rule.title, isOn: Binding(get: { inbox.isEnabled(rule) }, set: { inbox.setEnabled(rule, $0) }))
+                    }
+                    Toggle("Mark rule-cleared threads done on GitHub", isOn: Binding(get: { model.preferences.syncRuleClears }, set: { model.preferences.syncRuleClears = $0 }))
                 }
-                Toggle("Mark rule-cleared threads done on GitHub", isOn: Binding(get: { model.preferences.syncRuleClears }, set: { model.preferences.syncRuleClears = $0 }))
-            }
-            if !model.mutedRepositories.isEmpty {
-                Menu("Muted repositories") {
-                    ForEach(model.mutedRepositories, id: \.self) { repository in
-                        Button("Unmute \(repository)") { model.unmute(repository) }
+                if !inbox.mutedRepositories.isEmpty {
+                    Menu("Muted repositories") {
+                        ForEach(inbox.mutedRepositories, id: \.self) { repository in
+                            Button("Unmute \(repository)") { inbox.unmute(repository) }
+                        }
                     }
                 }
             }
@@ -728,9 +735,9 @@ struct SettingsMenu: View {
                 Toggle("Unread only", isOn: $model.unreadOnly)
             }
             Section("Accounts") {
-                ForEach(model.preferences.accounts, id: \.key) { account in
-                    Toggle(account.host.isDotCom ? "@\(account.login)" : "@\(account.login) on \(account.host.name)", isOn: Binding(
-                        get: { model.activeAccountKey == account.key },
+                ForEach(model.accounts.all, id: \.key) { account in
+                    Toggle(Self.name(of: account), isOn: Binding(
+                        get: { model.accounts.activeKey == account.key },
                         set: { if $0 { model.switchAccount(to: account.key) } }
                     ))
                 }
@@ -741,7 +748,7 @@ struct SettingsMenu: View {
             }
             Divider()
             Button("Settings…") { model.openSettings?() }
-            Button("Refresh") { model.refresh() }
+            Button("Refresh") { model.inbox?.refresh() }
             Button("Quit Caton") { NSApp.terminate(nil) }
         } label: {
             Image(systemName: "gearshape").font(.system(size: 11)).foregroundStyle(.secondary)

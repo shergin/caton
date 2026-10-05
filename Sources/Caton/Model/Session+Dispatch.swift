@@ -2,7 +2,7 @@ import CatonCore
 import Foundation
 
 /// Sending queued actions to GitHub, one at a time and paced.
-extension AppModel {
+extension Session {
     func startDispatching() {
         dispatchTask?.cancel()
         dispatchTask = Task {
@@ -10,7 +10,9 @@ extension AppModel {
                 if let action = state.queue.takeDue(now: .now) {
                     await execute(action)
                     // GitHub asks for a second between mutations sent in bulk.
-                    try? await Task.sleep(for: action.verb == .markRead ? .milliseconds(250) : .seconds(1))
+                    if connection != nil {
+                        try? await Task.sleep(for: action.verb == .markRead ? .milliseconds(250) : .seconds(1))
+                    }
                 } else {
                     let wait = state.queue.nextDueDate.map { max(0.1, $0.timeIntervalSinceNow) } ?? 1
                     try? await Task.sleep(for: .seconds(min(wait, 1)))
@@ -20,16 +22,15 @@ extension AppModel {
     }
 
     func wakeDispatcher() {
-        if dispatchTask == nil, rest != nil || isPractice { startDispatching() }
+        if dispatchTask == nil { startDispatching() }
     }
 
     private func execute(_ action: QueuedAction) async {
-        let rest = isPractice ? nil : rest
-        guard rest != nil || isPractice else { return }
         do {
             // Only a thread exists on GitHub; a review request found by search
-            // is dismissed here alone.
-            if !dryRun, case .thread(let threadID) = action.item, let rest {
+            // is dismissed here alone, and so is everything in a dry run or a
+            // session connected to nothing.
+            if !dryRun, case .thread(let threadID) = action.item, let rest = connection?.rest {
                 switch action.verb {
                 case .markRead:
                     try await rest.markRead(threadID: threadID)

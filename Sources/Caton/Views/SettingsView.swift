@@ -91,11 +91,20 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var rules: some View {
+    /// Rules belong to the account's inbox, so they wait for a sign-in.
+    @ViewBuilder private var rules: some View {
+        if let session = model.accounts.session {
+            rules(session)
+        } else {
+            Form { Text("Sign in to set the rules for an account.").foregroundStyle(.secondary) }.formStyle(.grouped)
+        }
+    }
+
+    private func rules(_ session: Session) -> some View {
         Form {
             Section {
                 ForEach(Rule.allCases, id: \.self) { rule in
-                    Toggle(isOn: Binding(get: { model.isEnabled(rule) }, set: { model.setEnabled(rule, $0) })) {
+                    Toggle(isOn: Binding(get: { session.isEnabled(rule) }, set: { session.setEnabled(rule, $0) })) {
                         VStack(alignment: .leading) {
                             Text(rule.title)
                             Text(rule.explanation).font(.caption).foregroundStyle(.secondary)
@@ -111,19 +120,19 @@ struct SettingsView: View {
                 Text("Off: rules hide threads on this Mac only. On: they are also marked done on github.com, after the undo window.")
             }
             Section {
-                Stepper(value: Binding(get: { model.readWindowDays }, set: { model.readWindowDays = $0 }), in: 1...30) {
-                    LabeledContent("Keep read threads", value: model.readWindowDays == 1 ? "1 day" : "\(model.readWindowDays) days")
+                Stepper(value: Binding(get: { session.readWindowDays }, set: { session.readWindowDays = $0 }), in: 1...30) {
+                    LabeledContent("Keep read threads", value: session.readWindowDays == 1 ? "1 day" : "\(session.readWindowDays) days")
                 }
             } footer: {
                 Text("Read threads outside Needs me leave the inbox after this long, as on github.com. Needs me keeps them until they are done.")
             }
             Section {
-                if model.savedSearches.isEmpty {
+                if session.savedSearches.isEmpty {
                     Text("None yet. Search in the panel (/), then choose Save as split.").foregroundStyle(.secondary)
                 }
-                ForEach(model.savedSearches) { saved in
+                ForEach(session.savedSearches) { saved in
                     HStack {
-                        TextField("Name", text: Binding(get: { saved.name }, set: { model.renameSavedSearch(saved.id, to: $0) }))
+                        TextField("Name", text: Binding(get: { saved.name }, set: { session.renameSavedSearch(saved.id, to: $0) }))
                             .labelsHidden()
                             .frame(maxWidth: 140)
                         Text(saved.query).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
@@ -136,19 +145,19 @@ struct SettingsView: View {
             } footer: {
                 Text("Each shows as a split after Feed, across all four splits, on keys 5 to 9.")
             }
-            LoginSection(model: model, list: .bots, title: "Bot accounts",
+            LoginSection(session: session, list: .bots, title: "Bot accounts",
                          footer: "GitHub Apps and logins ending in -bot, _bot, robot or [bot] count as bots already. Add machine users named otherwise.")
-            LoginSection(model: model, list: .aiReviewers, title: "AI reviewers",
+            LoginSection(session: session, list: .aiReviewers, title: "AI reviewers",
                          footer: "Their reviews and comments are marked AI on the avatar.")
-            LoginSection(model: model, list: .agents, title: "Coding agents",
+            LoginSection(session: session, list: .agents, title: "Coding agents",
                          footer: "Pull requests they open are marked as an agent's.")
-            if !model.mutedRepositories.isEmpty {
+            if !session.mutedRepositories.isEmpty {
                 Section("Muted repositories") {
-                    ForEach(model.mutedRepositories, id: \.self) { repository in
+                    ForEach(session.mutedRepositories, id: \.self) { repository in
                         HStack {
                             Text(repository)
                             Spacer()
-                            Button("Unmute") { model.unmute(repository) }
+                            Button("Unmute") { session.unmute(repository) }
                         }
                     }
                 }
@@ -199,7 +208,7 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if model.activeAccountKey == account.key {
+                        if model.accounts.activeKey == account.key {
                             Text("Showing").foregroundStyle(.secondary)
                             Button("Sign out", role: .destructive) { model.signOut() }
                         } else {
@@ -301,19 +310,19 @@ struct HotKeyRecorder: View {
 
 /// One editable list of machine-account logins.
 struct LoginSection: View {
-    let model: AppModel
-    let list: AppModel.LoginList
+    let session: Session
+    let list: Session.LoginList
     let title: String
     let footer: String
     @State private var login = ""
 
     var body: some View {
         Section {
-            ForEach(model.logins(list), id: \.self) { login in
+            ForEach(session.logins(list), id: \.self) { login in
                 HStack {
                     Text(login)
                     Spacer()
-                    Button("Remove") { model.removeLogin(login, from: list) }
+                    Button("Remove") { session.removeLogin(login, from: list) }
                 }
             }
             HStack {
@@ -328,7 +337,7 @@ struct LoginSection: View {
     }
 
     private func add() {
-        model.addLogin(login, to: list)
+        session.addLogin(login, to: list)
         login = ""
     }
 }
@@ -397,7 +406,7 @@ struct AboutView: View {
                 }
             }
             Section {
-                let week = model.weekTally
+                let week = model.accounts.session?.weekTally ?? Tally()
                 LabeledContent("Cleared by rules", value: "\(week.byRules)")
                 LabeledContent("Cleared by you", value: "\(week.byYou)")
             } header: {

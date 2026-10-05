@@ -16,8 +16,10 @@ struct SpeedTests {
         model = AppModel(
             preferences: Preferences(defaults: UserDefaults(suiteName: "caton-speed-\(UUID().uuidString)")!),
             persistence: StatePersistence(directory: directory),
+            dryRun: false,
             openURL: { _ in }
         )
+        model.accounts.use(Session(viewer: Viewer(login: "me", nodeID: "U_me", scopes: []), source: .local(facts: [:]), persistence: nil, dryRun: false))
         let reasons: [Reason] = [.mention, .teamMention, .comment, .author, .subscribed, .subscribed, .ciActivity, .manual]
         var threads: [String: NotificationThread] = [:]
         for index in 0..<1_000 {
@@ -36,9 +38,10 @@ struct SpeedTests {
             )
             threads[thread.id] = thread
         }
-        model.threads = threads
-        model.state.savedSearches = [SavedSearch(name: "Crashes", query: "crashes"), SavedSearch(name: "Repo 1", query: "repo:repo1")]
-        model.recompute()
+        let session = model.accounts.session!
+        session.threads = threads
+        session.state.savedSearches = [SavedSearch(name: "Crashes", query: "crashes"), SavedSearch(name: "Repo 1", query: "repo:repo1")]
+        session.recompute()
     }
 
     func time(_ label: String, repeat count: Int = 20, _ work: () -> Void) -> Double {
@@ -87,7 +90,7 @@ struct SpeedTests {
     }
 
     @Test func reclassifying_the_inbox_stays_within_budget() {
-        let cost = time("recompute of 1,000 threads", repeat: 5) { model.recompute() }
+        let cost = time("recompute of 1,000 threads", repeat: 5) { model.inbox?.recompute() }
         #expect(cost < 100)
     }
 }

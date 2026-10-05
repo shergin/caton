@@ -18,8 +18,9 @@ extension AppModel {
     /// rows to draw, the bundle under the selection) reads this.
     struct ListCache {
         struct Key: Equatable {
+            var session: ObjectIdentifier?
             var snapshot: Int
-            var settings: Int
+            var savedSearches: [SavedSearch]
             var section: Section
             var query: String
             var unreadOnly: Bool
@@ -32,6 +33,12 @@ extension AppModel {
         let rows: [ListRow]
     }
 
+    struct SavedCountKey: Equatable {
+        var session: ObjectIdentifier?
+        var snapshot: Int
+        var savedSearches: [SavedSearch]
+    }
+
     /// The rows of the current section, filtered and in display order.
     var visibleItems: [InboxItem] { list.items }
 
@@ -42,10 +49,11 @@ extension AppModel {
     /// The list for the current inputs: from the cache when they have not
     /// changed. Reading the inputs here is what lets views observe them.
     private var list: ListCache {
-        _ = snapshot
+        _ = inbox?.snapshot
         let key = ListCache.Key(
-            snapshot: snapshotVersion,
-            settings: settingsVersion,
+            session: inbox.map(ObjectIdentifier.init),
+            snapshot: inbox?.snapshotVersion ?? 0,
+            savedSearches: savedSearches,
             section: section,
             query: searchQuery,
             unreadOnly: unreadOnly,
@@ -64,13 +72,14 @@ extension AppModel {
     }
 
     private func layoutItems() -> [InboxItem] {
+        guard let inbox else { return [] }
         var items: [InboxItem]
         switch section {
-        case .split(let split): items = snapshot.items(in: split)
-        case .saved(let id): items = savedItems(id)
+        case .split(let split): items = inbox.snapshot.items(in: split)
+        case .saved(let id): items = inbox.savedSearch(id).map(inbox.items(matching:)) ?? []
         case .myPullRequests: items = []
-        case .snoozed: items = snapshot.snoozed
-        case .later: items = snapshot.later
+        case .snoozed: items = inbox.snapshot.snoozed
+        case .later: items = inbox.snapshot.later
         case .cleared: items = []
         }
         if unreadOnly { items = items.filter(\.isUnread) }
@@ -98,8 +107,6 @@ extension AppModel {
         return visibleRows.filter(\.isSelectable).map(\.id)
     }
 
-    var needsMeCount: Int { snapshot.count(.needsMe) }
-
     var selectedItem: InboxItem? {
         guard let id = selectedID?.item else { return nil }
         return visibleItems.first { $0.id == id }
@@ -118,7 +125,7 @@ extension AppModel {
         case .myPullRequests: myPullRequestNodes.count
         case .snoozed: snapshot.snoozed.count
         case .later: snapshot.later.count
-        case .cleared: cleared.count
+        case .cleared: inbox?.state.cleared.count ?? 0
         }
     }
 
@@ -140,72 +147,6 @@ extension AppModel {
         let current = tabs.firstIndex(of: section) ?? -1
         let next = ((current + offset) % tabs.count + tabs.count) % tabs.count
         show(tabs[next])
-    }
-
-    // MARK: Saved searches
-
-    var savedSearches: [SavedSearch] {
-        _ = settingsVersion
-        return state.savedSearches
-    }
-
-    func savedSearch(_ id: UUID) -> SavedSearch? { savedSearches.first { $0.id == id } }
-
-    /// How many threads a saved search matches; every saved search is
-    /// counted once per change to the inbox, not once per redraw.
-    private func savedCount(_ id: UUID) -> Int {
-        _ = snapshot
-        let key = [snapshotVersion, settingsVersion]
-        if let savedCountCache, savedCountCache.key == key { return savedCountCache.counts[id] ?? 0 }
-        let counts = Dictionary(uniqueKeysWithValues: state.savedSearches.map { ($0.id, savedItems($0.id).count) })
-        savedCountCache = (key, counts)
-        return counts[id] ?? 0
-    }
-
-    /// Every thread in the four splits that the saved query matches.
-    private func savedItems(_ id: UUID) -> [InboxItem] {
-        guard let saved = state.savedSearches.first(where: { $0.id == id }) else { return [] }
-        let query = SearchQuery(saved.query)
-        return Split.allCases.flatMap { snapshot.items(in: $0) }.filter { query.matches($0, facts: facts(for: $0.id)) }
-    }
-
-    /// Asks for a name for the current search.
-    func beginSavingSearch() {
-        guard !SearchQuery(searchQuery).isEmpty else {
-            toast("Type a search first (/), then save it")
-            return
-        }
-        isSearching = false
-        overlay = .saveSearch
-    }
-
-    /// Keeps the current search as a split and shows it.
-    func saveSearch(named name: String) {
-        overlay = .none
-        let query = searchQuery.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return }
-        let name = name.trimmingCharacters(in: .whitespaces)
-        let saved = SavedSearch(name: name.isEmpty ? query : name, query: query)
-        state.savedSearches.append(saved)
-        searchQuery = ""
-        settingsVersion += 1
-        save()
-        show(.saved(saved.id))
-        toast("Saved \(saved.name) as a split")
-    }
-
-    func renameSavedSearch(_ id: UUID, to name: String) {
-        guard let index = state.savedSearches.firstIndex(where: { $0.id == id }), !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        state.savedSearches[index].name = name
-        settingsVersion += 1
-        save()
-    }
-
-    func deleteSavedSearch(_ id: UUID) {
-        state.savedSearches.removeAll { $0.id == id }
-        settingsVersion += 1
-        save()
-        if section == .saved(id) { show(.split(.needsMe)) }
     }
 
     /// Selects a row; a thread inside a closed bundle opens the bundle.
@@ -340,102 +281,71 @@ extension AppModel {
             break
         }
         let items = targets(id)
-        guard !items.isEmpty else { return false }
-        for item in items {
-            // Practice threads have no page on GitHub.
-            if !isPractice { openURL(item.thread.webURL) }
-            // Only a thread has a read state on GitHub to change.
-            if item.isUnread, item.id.isThread {
-                state.readMarks[item.id] = item.thread.updatedAt
-                state.queue.enqueue(.markRead, [.init(item: item.id, activity: item.thread.updatedAt)], now: .now, grace: 0)
-            }
-        }
+        guard let inbox, !items.isEmpty else { return false }
+        // The practice inbox's threads have no page on GitHub.
+        if !inbox.isPractice { for item in items { openURL(item.thread.webURL) } }
+        inbox.markRead(items)
         checked.removeAll()
         toast(items.count == 1 ? "Opened \(items[0].thread.reference)" : "Opened \(items.count) threads")
-        recompute()
         return true
     }
 
     func markRead(_ id: RowID? = nil) {
-        let items = targets(id).filter { $0.isUnread && $0.id.isThread }
-        guard !items.isEmpty else { return }
-        for item in items { state.readMarks[item.id] = item.thread.updatedAt }
-        state.queue.enqueue(.markRead, items.map { .init(item: $0.id, activity: $0.thread.updatedAt) }, now: .now, grace: 0)
+        inbox?.markRead(targets(id))
         checked.removeAll()
-        recompute()
     }
 
     func done(_ id: RowID? = nil) { dismiss(.done, id, verbTitle: "Done") }
     func unsubscribe(_ id: RowID? = nil) { dismiss(.unsubscribe, id, verbTitle: "Unsubscribed") }
     func ignore(_ id: RowID? = nil) { dismiss(.ignore, id, verbTitle: "Ignored") }
 
+    /// Done, unsubscribe or ignore. A reminder row is Caton's own: the verb
+    /// ends the reminder instead.
     private func dismiss(_ verb: Verb, _ id: RowID?, verbTitle: String) {
-        var items = targets(id)
+        guard let inbox else { return }
+        let items = targets(id)
         guard !items.isEmpty else { return }
-        // A reminder row is Caton's own: dismissing it ends the reminder.
-        let reminders = items.filter(\.isReminder)
-        if !reminders.isEmpty {
-            settleReminders(reminders)
-            items.removeAll(where: \.isReminder)
-            if items.isEmpty {
-                checked.removeAll()
-                toast(reminders.count == 1 ? "Reminder done · z to undo" : "\(reminders.count) reminders done · z to undo")
-                recompute()
-                return
-            }
-        }
-        let batch = state.queue.enqueue(verb, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
-        state.count(byYou: items.count, now: .now)
-        undoStack.append(.queued(batch))
         checked.removeAll()
-        toast(items.count == 1 ? "\(verbTitle) \(items[0].thread.reference) · z to undo" : "\(verbTitle) \(items.count) threads · z to undo")
-        recompute()
-        wakeDispatcher()
+        let reminders = items.filter(\.isReminder)
+        let rows = items.filter { !$0.isReminder }
+        if let undo = inbox.settleReminders(reminders) { undoStack.append(undo) }
+        guard !rows.isEmpty else {
+            toast(reminders.count == 1 ? "Reminder done · z to undo" : "\(reminders.count) reminders done · z to undo")
+            return
+        }
+        undoStack.append(inbox.dismiss(verb, rows))
+        toast(rows.count == 1 ? "\(verbTitle) \(rows[0].thread.reference) · z to undo" : "\(verbTitle) \(rows.count) threads · z to undo")
     }
 
     /// Hides the selection until a time. With `onlyIfQuiet` it comes back
-    /// on any new activity, and at the time only if nothing happened.
+    /// on any new activity, and at the time only if nothing happened. A
+    /// reminder row moves its reminder.
     func snooze(_ id: RowID? = nil, until: Date, onlyIfQuiet: Bool = false) {
-        var items = targets(id)
+        guard let inbox else { return }
+        let items = targets(id)
         guard !items.isEmpty else { return }
-        // A reminder row moves its reminder.
-        let reminders = items.filter(\.isReminder)
-        if !reminders.isEmpty {
-            settleReminders(reminders, until: until)
-            items.removeAll(where: \.isReminder)
-            if items.isEmpty {
-                toast("Reminding \(until.formatted(.relative(presentation: .named))) · z to undo")
-                recompute()
-                return
-            }
-        }
-        var previous: [ItemID: Snooze?] = [:]
-        for item in items {
-            previous[item.id] = state.snoozes[item.id]
-            state.snoozes[item.id] = Snooze(until: until, activity: item.thread.updatedAt, onlyIfQuiet: onlyIfQuiet)
-            wokenSnoozes[item.id] = nil
-        }
-        undoStack.append(.snoozed(previous))
         checked.removeAll()
         let when = until.formatted(.relative(presentation: .named))
-        let what = items.count == 1 ? items[0].thread.reference : "\(items.count) threads"
+        let reminders = items.filter(\.isReminder)
+        let rows = items.filter { !$0.isReminder }
+        if let undo = inbox.settleReminders(reminders, until: until) { undoStack.append(undo) }
+        guard !rows.isEmpty else {
+            toast("Reminding \(when) · z to undo")
+            return
+        }
+        undoStack.append(inbox.snooze(rows, until: until, onlyIfQuiet: onlyIfQuiet))
+        let what = rows.count == 1 ? rows[0].thread.reference : "\(rows.count) threads"
         toast(onlyIfQuiet ? "Reminding about \(what) \(when) if nothing happens · z to undo" : "Snoozed \(what) until \(when) · z to undo")
-        recompute()
     }
 
     func toggleLater(_ id: RowID? = nil) {
+        guard let inbox else { return }
         let items = targets(id)
         guard !items.isEmpty else { return }
-        var previous: [ItemID: Date?] = [:]
-        let adding = items.contains { state.later[$0.id] == nil }
-        for item in items {
-            previous[item.id] = state.later[item.id]
-            state.later[item.id] = adding ? .now : nil
-        }
-        undoStack.append(.later(previous))
+        let (undo, added) = inbox.toggleLater(items)
+        undoStack.append(undo)
         checked.removeAll()
-        toast(adding ? "Saved for later · z to undo" : "Removed from Later")
-        recompute()
+        toast(added ? "Saved for later · z to undo" : "Removed from Later")
     }
 
     /// Opens the snooze picker. On the user's own pull request the reminder
@@ -452,6 +362,16 @@ extension AppModel {
         overlay = .snooze
     }
 
+    /// What a choice in the snooze picker does: snooze the threads, or set
+    /// the reminder on a pull request.
+    func chooseSnooze(_ until: Date) {
+        overlay = .none
+        switch snoozeTarget {
+        case .threads: snooze(until: until, onlyIfQuiet: snoozeOnlyIfQuiet)
+        case .pullRequest(let id): remind(id, until: until)
+        }
+    }
+
     func explain() {
         guard selectedItem != nil else { return }
         overlay = .why
@@ -462,90 +382,24 @@ extension AppModel {
         overlay = .peek
     }
 
-    // MARK: Rules
-
-    func isEnabled(_ rule: Rule) -> Bool {
-        _ = settingsVersion
-        return state.settings.enabledRules.contains(rule)
-    }
-
-    func setEnabled(_ rule: Rule, _ enabled: Bool) {
-        if enabled { state.settings.enabledRules.insert(rule) } else { state.settings.enabledRules.remove(rule) }
-        settingsChanged()
-    }
-
-    /// Reclassifies after a settings change and lets settings views redraw.
-    private func settingsChanged() {
-        settingsVersion += 1
-        recompute()
-    }
-
-    var mutedRepositories: [String] {
-        _ = settingsVersion
-        return state.settings.mutedRepositories.sorted()
-    }
-
-    /// The editable lists of machine accounts.
-    enum LoginList: CaseIterable {
-        case bots
-        case aiReviewers
-        case agents
-
-        var keyPath: WritableKeyPath<ClassifierSettings, Set<String>> {
-            switch self {
-            case .bots: \.botLogins
-            case .aiReviewers: \.aiReviewerLogins
-            case .agents: \.agentLogins
-            }
-        }
-    }
-
-    func logins(_ list: LoginList) -> [String] {
-        _ = settingsVersion
-        return state.settings[keyPath: list.keyPath].sorted()
-    }
-
-    func addLogin(_ login: String, to list: LoginList) {
-        let login = login.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !login.isEmpty else { return }
-        state.settings[keyPath: list.keyPath].insert(login)
-        settingsChanged()
-    }
-
-    func removeLogin(_ login: String, from list: LoginList) {
-        state.settings[keyPath: list.keyPath].remove(login)
-        settingsChanged()
-    }
-
-    /// How many days read threads outside Needs me stay.
-    var readWindowDays: Int {
-        get {
-            _ = settingsVersion
-            return state.settings.readWindowDays
-        }
-        set {
-            state.settings.readWindowDays = min(max(newValue, 1), 30)
-            settingsChanged()
-        }
-    }
-
-    /// The last seven days' clears, for Settings' About tab.
-    var weekTally: Tally {
-        _ = snapshot
-        return state.week(now: .now)
-    }
-
-    func unmute(_ repository: String) {
-        state.settings.mutedRepositories.remove(repository)
-        settingsChanged()
-    }
-
     func muteRepository(_ id: RowID? = nil) {
         guard let item = targets(id).first else { return }
-        state.settings.mutedRepositories.insert(item.thread.repository.fullName.lowercased())
+        inbox?.mute(item.thread.repository)
         toast("Muted \(item.thread.repository.fullName)")
-        settingsChanged()
     }
+
+    func copyLink(_ id: RowID? = nil) {
+        if case .pullRequest(let pullRequestID) = id ?? selectedID {
+            copyPullRequestLink(pullRequestID)
+            return
+        }
+        guard let item = targets(id).first else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(item.thread.webURL.absoluteString, forType: .string)
+        toast("Copied \(item.thread.reference)")
+    }
+
+    // MARK: Get me to zero
 
     /// One way to clear in bulk, with what it would clear.
     struct ZeroOption: Identifiable {
@@ -578,82 +432,78 @@ extension AppModel {
     func getMeToZero(_ option: ZeroOption) {
         overlay = .none
         let items = option.items.filter { $0.classification.split != .needsMe }
-        guard !items.isEmpty else { return }
-        let batch = state.queue.enqueue(.done, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
-        state.cleared += items.map { ClearedEntry(batch: batch, thread: $0.thread, rule: nil, at: .now) }
-        state.count(byYou: items.count, now: .now)
-        undoStack.append(.queued(batch))
+        guard let inbox, !items.isEmpty else { return }
+        undoStack.append(inbox.clear(items))
         checked.removeAll()
         toast("Cleared \(items.count) · z to undo")
-        recompute()
-        wakeDispatcher()
     }
 
     // MARK: Undo
 
     func undo() {
-        guard let entry = undoStack.popLast() else {
-            if let batch = state.queue.lastUndoableBatch { undoQueued(batch) } else { toast("Nothing to undo") }
+        guard let inbox else { return }
+        let undone: Session.Undone
+        if let entry = undoStack.popLast() {
+            undone = inbox.undo(entry)
+        } else if let latest = inbox.undoLatestQueued() {
+            undone = latest
+        } else {
+            toast("Nothing to undo")
             return
         }
-        switch entry {
-        case .queued(let batch):
-            undoQueued(batch)
-        case .snoozed(let previous):
-            for (id, snooze) in previous { state.snoozes[id] = snooze }
-            toast("Snooze undone")
-            recompute()
-        case .later(let previous):
-            for (id, date) in previous { state.later[id] = date }
-            toast("Undone")
-            recompute()
-        case .followUps(let previous):
-            for (id, followUp) in previous { state.followUps[id] = followUp }
-            settingsVersion += 1
-            toast("Undone")
-            recompute()
-        case .pullRequestWrite(let pullRequestID):
-            if !cancelWrite(pullRequestID) { toast("Already sent to GitHub") }
-        }
+        if let item = undone.select { selectedID = .item(item) }
+        toast(undone.message)
     }
 
-    private func undoQueued(_ batch: UUID) {
-        let removed = state.queue.undo(batch: batch)
-        guard !removed.isEmpty else {
-            toast("Already sent to GitHub")
-            return
-        }
-        state.cleared.removeAll { $0.batch == batch }
-        let dismissals = removed.filter(\.verb.dismisses)
-        let byRules = dismissals.filter { $0.rule != nil }.count
-        state.count(byRules: -byRules, byYou: -(dismissals.count - byRules), now: .now)
-        for action in removed where action.rule != nil {
-            state.ruleExemptions[action.item] = action.activity
-        }
-        if let first = removed.first { selectedID = .item(first.item) }
-        toast(removed.count == 1 ? "Undone" : "Undone for \(removed.count) threads")
-        recompute()
-    }
-
-    /// Lets a rule-cleared thread back in, for this activity.
+    /// Lets a cleared thread back in, for this activity.
     func restore(_ entry: ClearedEntry) {
-        let removed = state.queue.undo(batch: entry.batch).filter { $0.item == entry.item }
-        if case .rule? = state.dismissals[entry.item]?.cause { state.dismissals[entry.item] = nil }
-        let latest = if case .thread(let id) = entry.item { threads[id]?.updatedAt } else { nil as Date? }
-        state.ruleExemptions[entry.item] = latest ?? .now
-        state.cleared.removeAll { $0.id == entry.id }
-        toast(removed.isEmpty && state.dismissals[entry.item] != nil ? "Already done on GitHub" : "Restored \(entry.reference)")
-        recompute()
+        guard let inbox else { return }
+        toast(inbox.restore(entry))
     }
 
-    func copyLink(_ id: RowID? = nil) {
-        if case .pullRequest(let pullRequestID) = id ?? selectedID {
-            copyPullRequestLink(pullRequestID)
+    // MARK: Saved searches
+
+    var savedSearches: [SavedSearch] { inbox?.savedSearches ?? [] }
+
+    func savedSearch(_ id: UUID) -> SavedSearch? { inbox?.savedSearch(id) }
+
+    /// How many threads a saved search matches; every saved search is
+    /// counted once per change to the inbox, not once per redraw.
+    private func savedCount(_ id: UUID) -> Int {
+        guard let inbox else { return 0 }
+        _ = inbox.snapshot
+        let key = SavedCountKey(session: ObjectIdentifier(inbox), snapshot: inbox.snapshotVersion, savedSearches: inbox.savedSearches)
+        if let savedCountCache, savedCountCache.key == key { return savedCountCache.counts[id] ?? 0 }
+        let counts = Dictionary(uniqueKeysWithValues: inbox.savedSearches.map { ($0.id, inbox.items(matching: $0).count) })
+        savedCountCache = (key, counts)
+        return counts[id] ?? 0
+    }
+
+    /// Asks for a name for the current search.
+    func beginSavingSearch() {
+        guard !SearchQuery(searchQuery).isEmpty else {
+            toast("Type a search first (/), then save it")
             return
         }
-        guard let item = targets(id).first else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(item.thread.webURL.absoluteString, forType: .string)
-        toast("Copied \(item.thread.reference)")
+        isSearching = false
+        overlay = .saveSearch
+    }
+
+    /// Keeps the current search as a split and shows it.
+    func saveSearch(named name: String) {
+        overlay = .none
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard let inbox, !query.isEmpty else { return }
+        let saved = inbox.addSavedSearch(named: name.trimmingCharacters(in: .whitespaces), query: query)
+        searchQuery = ""
+        show(.saved(saved.id))
+        toast("Saved \(saved.name) as a split")
+    }
+
+    func renameSavedSearch(_ id: UUID, to name: String) { inbox?.renameSavedSearch(id, to: name) }
+
+    func deleteSavedSearch(_ id: UUID) {
+        inbox?.deleteSavedSearch(id)
+        if section == .saved(id) { show(.split(.needsMe)) }
     }
 }
