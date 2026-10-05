@@ -16,8 +16,9 @@ struct NotModified: HTTPClient {
 /// GitHub's answer replaces it, and a refusal takes it back.
 @MainActor
 struct WriteTests {
-    /// GitHub, played by a script: My PRs answers at once; a mutation is
-    /// recorded and waits until the test says how GitHub answers it.
+    /// GitHub, played by a script: My PRs answers at once, the review
+    /// request search finds nothing, and a mutation is recorded and waits
+    /// until the test says how GitHub answers it.
     actor GitHub: Transport {
         private(set) var mutations: [Request] = []
         private var answer: CheckedContinuation<Data, any Error>?
@@ -28,6 +29,7 @@ struct WriteTests {
         }
 
         nonisolated func execute(_ request: Request) async throws -> Data {
+            if request.operationName == "ReviewRequestsQuery" { return Data(#"{"data":{"search":{"nodes":[]}}}"#.utf8) }
             guard request.operationName.hasSuffix("Mutation") else { return myPullRequests }
             return try await withCheckedThrowingContinuation { continuation in
                 Task { await self.hold(request, continuation) }
