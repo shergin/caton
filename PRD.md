@@ -433,6 +433,9 @@ The vocabulary follows gh-dash (`d` `m` `u` `b` `o`) and Superhuman/Linear (`e` 
 
 ## 12. Architecture
 
+This section is the design. The code as built is described in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 **Pure native client. No server, no webhooks.** There's no inbox webhook, and a relay would be bound by the same per-user poll interval and rate limit. It would add risk without adding freshness.
 
 ```

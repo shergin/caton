@@ -14,6 +14,9 @@ The product thinking is in [PRD.md](PRD.md).
 
 ## How it is built
 
+[`ARCHITECTURE.md`](ARCHITECTURE.md) has the full map: the layers, the
+session, panel and command table, and where Baton begins and ends.
+
 - **CatonCore** (no UI, no network library): the REST client for GitHub's
   notifications feed (the feed has no GraphQL equivalent), the classifier,
   the action queue with its undo window, and the inbox projection. Pure and

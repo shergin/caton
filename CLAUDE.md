@@ -30,9 +30,16 @@ aside).
 - `Sources/CatonCore`: Foundation only. The REST client, classifier, action
   queue, local state and inbox projection. Everything that decides what shows
   where lives here and is tested here.
-- `Sources/Caton`: the app. `Graph/` holds Baton documents and the subject
-  store, `Model/AppModel.swift` owns all state and every change to GitHub,
-  `Views/` and `App/` are the panel and the AppKit shell.
+- `Sources/Caton`: the app. `ARCHITECTURE.md` is the map. In short:
+  `Model/` has `Session` (one inbox: feed, local state, queue, writes),
+  `Accounts` (sign-in, building sessions), `Panel` (where the user is, and
+  the laid-out list) and `AppModel` (the root and the commands); `Keys/`
+  has the command table every key, menu and hint reads; `Graph/` holds
+  Baton documents and the subject store; `Views/` is split into `Panel/`,
+  `Rows/`, `Overlays/` and `Settings/`; `App/` is the AppKit shell.
+- A new command is a line in `Command.all` with the row kinds it applies
+  to; a new overlay handles its own keys in a `handle(_:model:)` beside
+  its view.
 - GraphQL lives beside the code that reads it: `@Fragment` and `@Query` on
   views, `.graphql` files beside model code (`Graph/Subjects.graphql`). A
   model that needs a view's query asks for the same operation value and
