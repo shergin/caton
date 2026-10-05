@@ -3,8 +3,8 @@
 # Canonical copy; the live cask is Casks/caton.rb in shergin/homebrew-tap.
 # scripts/release.sh --publish fills in version and sha256 and updates both.
 cask "caton" do
-  version "0.3.0"
-  sha256 "4ad1dd0a763588f42b4d2ed616dbb3820bd023121bd4617c51d6e459dc8b74a9"
+  version "0.4.0"
+  sha256 "535f4ab5763133b6502a2f7c947d4c62a498a4b5d2c100bcdf52479f643ac892"
 
   url "https://github.com/shergin/caton/releases/download/v#{version}/Caton-#{version}.zip"
   name "Caton"
