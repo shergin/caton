@@ -6,3 +6,7 @@ DerivedData/
 .DS_Store
 # Research notes stay on this machine.
 research/
+# Compiler output a stray swiftc run can leave at the root.
+/*.dia
+/*.swiftdeps
+/*.swiftmodule
