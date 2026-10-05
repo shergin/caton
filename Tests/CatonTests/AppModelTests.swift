@@ -160,7 +160,7 @@ struct AppModelTests {
     @Test func opening_a_bundle_shows_its_threads_and_left_closes_it() {
         load((1...4).map { thread("\($0)", reason: .subscribed, age: Double($0)) } + [thread("8", reason: .subscribed, repository: "acme/api", age: 9)])
         model.panel.show(.split(.feed))
-        #expect(!model.open())
+        #expect(!press(special: .enter))
         #expect(model.panel.rows.count == 7)
         model.panel.moveSelection(by: 2)
         #expect(model.panel.selectedID == row("2"))

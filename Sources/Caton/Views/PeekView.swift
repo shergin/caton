@@ -27,6 +27,16 @@ struct PeekView: View {
     }
 }
 
+extension PeekView {
+    /// Esc, space or `p` closes the peek. Any other key closes it and does
+    /// its job on the row: ⏎ opens it, `e` marks it done.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        model.panel.overlay = .none
+        let closesOnly = key.special == .escape || (key.shortcutModifiers.isEmpty && [" ", "p"].contains(key.characters))
+        return closesOnly ? .handled : .passed
+    }
+}
+
 /// A pull request's description, latest comment and latest reviews. The view
 /// owns its query: the store answers at once for a subject seen before, and
 /// the network fills in the rest.
@@ -215,5 +225,13 @@ struct WelcomeView: View {
         .frame(width: 380, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 12)
+    }
+}
+
+extension WelcomeView {
+    /// ⏎ or Esc keeps rule clears on this Mac; the other choice takes a click.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        if key.special == .escape || key.special == .enter { model.finishWelcome(syncRuleClears: false) }
+        return .handled
     }
 }

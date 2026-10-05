@@ -342,27 +342,17 @@ struct LoginSection: View {
     }
 }
 
-/// The keymap, read-only.
+/// The keymap, read-only, from the command table.
 struct ShortcutsList: View {
-    private let navigation: [(String, String)] = [
-        ("j  k  ↓  ↑", "Move down, up"),
-        ("space  ⌃F  ⌃B", "Page down, up"),
-        ("⌃D  ⌃U", "Half a page down, up"),
-        ("gg  G  ⌘↑  ⌘↓", "Top, bottom"),
-        ("⇥  ⇧⇥", "Next, previous split"),
-        ("esc", "Clear the search or selection, then close"),
-    ]
-
     var body: some View {
         Form {
-            Section("Move") {
-                ForEach(navigation, id: \.0) { keys, title in row(keys, title) }
-            }
-            Section("Act and view") {
-                ForEach(Command.all.filter { !$0.keys.isEmpty }) { command in row(command.keys, command.title) }
+            ForEach(Command.Group.allCases, id: \.self) { group in
+                Section(group.title) {
+                    ForEach(Command.keymap(group), id: \.title) { line in row(line.keys, line.title) }
+                }
             }
             Section("Command menu only (⌘K)") {
-                ForEach(Command.all.filter(\.keys.isEmpty)) { command in Text(command.title) }
+                ForEach(Command.unbound) { command in Text(command.title) }
             }
         }
         .formStyle(.grouped)

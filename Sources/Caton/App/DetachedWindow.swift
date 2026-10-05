@@ -107,8 +107,9 @@ final class DetachedWindow: NSObject, NSWindowDelegate {
             default: break
             }
         }
-        if window.firstResponder is NSTextView, event.keyCode != 53 { return false }
+        let key = KeyPress(event: event)
+        if window.firstResponder is NSTextView, key.special != .escape { return false }
         // A window does not close on Esc or after opening a thread.
-        return KeyRouter.handle(event, model: model, close: {})
+        return KeyRouter.handle(key, model: model, close: {})
     }
 }

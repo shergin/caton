@@ -282,28 +282,21 @@ struct InboxView: View {
 
     // MARK: Footer
 
+    private func hints(limit: Int) -> some View {
+        ForEach(Command.hints(in: model, limit: limit), id: \.label) { hint in
+            Hint(key: hint.key, label: hint.label)
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: 8) {
-            if model.panel.section == .myPullRequests {
-                Hint(key: "⏎", label: "open")
-                Hint(key: "n", label: "nudge")
-                Hint(key: "h", label: "remind")
-                Hint(key: "y", label: "copy link")
-                Hint(key: "?", label: "keys")
-            } else if model.panel.checked.isEmpty, model.panel.selectedBundle != nil {
-                Hint(key: "⏎", label: "open bundle")
-                Hint(key: "e", label: "done all")
-                Hint(key: "x", label: "select all")
-                Hint(key: "?", label: "keys")
-            } else if model.panel.checked.isEmpty {
-                Hint(key: "e", label: "done")
-                Hint(key: "h", label: "snooze")
-                Hint(key: "u", label: "unsub")
-                Hint(key: "⏎", label: "open")
+            // The verbs that apply to the selection, from the command table.
+            if model.panel.checked.isEmpty {
+                hints(limit: 4)
                 Hint(key: "?", label: "keys")
             } else {
                 Text("\(model.panel.checked.count) selected").font(.system(size: 11)).foregroundStyle(Color.accentColor)
-                Hint(key: "e", label: "done all")
+                hints(limit: 2)
                 Hint(key: "esc", label: "clear")
             }
             Spacer()
@@ -497,6 +490,29 @@ struct SnoozePicker: View {
     }
 }
 
+extension SnoozePicker {
+    /// A digit picks the time. On threads `n` switches to "only if nothing
+    /// happens"; on a reminder `x` removes it.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        let panel = model.panel
+        if key.special == .escape {
+            panel.overlay = .none
+            return .handled
+        }
+        guard !key.isRepeat, key.shortcutModifiers.isEmpty else { return .handled }
+        switch (panel.snoozeTarget, key.characters) {
+        case (.pullRequest(let id), "x"):
+            panel.overlay = .none
+            model.clearReminder(id)
+        case (.threads, "n"):
+            panel.snoozeOnlyIfQuiet.toggle()
+        default:
+            if let option = SnoozeOption.all.first(where: { $0.key == key.characters }) { model.chooseSnooze(option.date()) }
+        }
+        return .handled
+    }
+}
+
 /// Names the current search before it becomes a split.
 struct SaveSearchPrompt: View {
     let model: AppModel
@@ -523,6 +539,15 @@ struct SaveSearchPrompt: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .shadow(radius: 8)
         .onAppear { focused = true }
+    }
+}
+
+extension SaveSearchPrompt {
+    /// The name field takes the keys; Esc cancels.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        guard key.special == .escape else { return .typing }
+        model.panel.overlay = .none
+        return .handled
     }
 }
 
@@ -562,6 +587,14 @@ struct WhyCard: View {
     }
 }
 
+extension WhyCard {
+    /// Any key closes it.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        model.panel.overlay = .none
+        return .handled
+    }
+}
+
 /// The three keys worth learning first, shown once.
 struct TipsCard: View {
     var body: some View {
@@ -588,6 +621,14 @@ struct TipsCard: View {
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
             Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+extension TipsCard {
+    /// Any key ends the tip, and the keys it teaches also do their job.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        model.dismissTips()
+        return key.special == .escape ? .handled : .passed
     }
 }
 
@@ -626,6 +667,18 @@ struct ZeroPicker: View {
     }
 }
 
+extension ZeroPicker {
+    /// A digit runs its clear.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        if key.special == .escape {
+            model.panel.overlay = .none
+        } else if !key.isRepeat, let option = model.zeroOptions.first(where: { $0.key == key.characters }) {
+            model.getMeToZero(option)
+        }
+        return .handled
+    }
+}
+
 struct CommandMenu: View {
     let model: AppModel
     let close: () -> Void
@@ -633,9 +686,11 @@ struct CommandMenu: View {
     @State private var index = 0
     @FocusState private var focused: Bool
 
+    /// The commands that apply to the selection, narrowed by the query.
     private var commands: [Command] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? Command.all : Command.all.filter { $0.title.localizedStandardContains(trimmed) }
+        let commands = Command.menu(in: model)
+        return trimmed.isEmpty ? commands : commands.filter { $0.title.localizedStandardContains(trimmed) }
     }
 
     var body: some View {
@@ -681,30 +736,62 @@ struct CommandMenu: View {
         guard commands.indices.contains(index) else { return }
         let command = commands[index]
         model.panel.overlay = .none
-        command.run(model)
-        if command.closesPanel { close() }
+        if command.run(model) { close() }
     }
 }
 
+extension CommandMenu {
+    /// The query field takes the keys; Esc closes the menu.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        guard key.special == .escape else { return .typing }
+        model.panel.overlay = .none
+        return .handled
+    }
+}
+
+/// Every bound key, from the command table, by group: two columns when
+/// the panel is wide enough, else one that scrolls.
 struct KeymapOverlay: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Keys").font(.system(size: 13, weight: .semibold)).padding(.bottom, 4)
-            ForEach(Command.all.filter { !$0.keys.isEmpty }) { command in
-                HStack {
-                    Text(command.keys).font(.system(size: 11, design: .monospaced)).frame(width: 60, alignment: .leading)
-                    Text(command.title).font(.system(size: 11))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Keys").font(.system(size: 13, weight: .semibold))
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    column([.act, .view, .app])
+                    column([.move, .go])
                 }
+                ScrollView {
+                    column(Command.Group.allCases)
+                }
+                .frame(maxHeight: 400)
             }
-            HStack {
-                Text("j k").font(.system(size: 11, design: .monospaced)).frame(width: 60, alignment: .leading)
-                Text("Move (space, ⌃F, ⌃B page; gg, G ends)").font(.system(size: 11))
-            }
-            Text("Any key closes").font(.system(size: 10)).foregroundStyle(.tertiary).padding(.top, 4)
+            Text("Any key closes. ⌘K lists the rest.").font(.system(size: 10)).foregroundStyle(.tertiary)
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .shadow(radius: 10)
+    }
+
+    private func column(_ groups: [Command.Group]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(groups, id: \.self) { group in
+                Text(group.title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                ForEach(Command.keymap(group, keys: 2), id: \.title) { line in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(line.keys).font(.system(size: 10, design: .monospaced)).frame(width: 64, alignment: .leading)
+                        Text(line.title).font(.system(size: 10)).lineLimit(1).frame(width: 170, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
+}
+
+extension KeymapOverlay {
+    /// Any key closes it.
+    static func handle(_ key: KeyPress, model: AppModel) -> KeyOutcome {
+        model.panel.overlay = .none
+        return .handled
     }
 }
 

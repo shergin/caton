@@ -183,7 +183,7 @@ struct MyPullRequestRow: View {
                     if pullRequest.pullRequestIcon.isDraft {
                         RowButton(symbol: "paperplane", help: "Mark ready for review (⇧R)", action: onReady)
                     } else {
-                        RowButton(symbol: "hand.wave", help: "Nudge: ask the reviewers again (n)", action: onNudge)
+                        RowButton(symbol: "hand.wave", help: "Nudge the reviewers again (n)", action: onNudge)
                     }
                     RowButton(symbol: "alarm", help: followUp == nil ? "Remind me if nobody answers (h)" : "Change the reminder (h)", action: onRemind)
                 }

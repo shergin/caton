@@ -144,9 +144,10 @@ final class StatusItemController: NSObject {
 
     private func route(_ event: NSEvent) -> Bool {
         guard panel.isKeyWindow else { return false }
-        // A focused text field keeps its keys.
-        if panel.firstResponder is NSTextView, event.keyCode != 53 { return false }
-        return KeyRouter.handle(event, model: model, close: { self.closePanel() })
+        let key = KeyPress(event: event)
+        // A focused text field keeps its keys, all but Esc.
+        if panel.firstResponder is NSTextView, key.special != .escape { return false }
+        return KeyRouter.handle(key, model: model, close: { self.closePanel() })
     }
 
     private func removeMonitors() {

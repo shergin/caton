@@ -251,6 +251,17 @@ final class Panel {
         }
     }
 
+    /// The saved search at an index, as digits 5 to 9 reach them.
+    func showSaved(at index: Int) {
+        guard let saved = session?.savedSearches, saved.indices.contains(index) else { return }
+        show(.saved(saved[index].id))
+    }
+
+    var isOnSavedSplit: Bool {
+        if case .saved = section { return true }
+        return false
+    }
+
     func cycleSplit(by offset: Int) {
         let tabs = tabs
         let current = tabs.firstIndex(of: section) ?? -1
@@ -341,6 +352,20 @@ final class Panel {
     }
 
     func clearChecked() { checked.removeAll() }
+
+    /// Esc: clears the search, else the checks. True when there was
+    /// nothing left to clear, and the panel should close.
+    func unwind() -> Bool {
+        if isSearching || !searchQuery.isEmpty {
+            searchQuery = ""
+            isSearching = false
+        } else if !checked.isEmpty {
+            clearChecked()
+        } else {
+            return true
+        }
+        return false
+    }
 
     // MARK: Toasts
 

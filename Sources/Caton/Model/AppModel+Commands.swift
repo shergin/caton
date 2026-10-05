@@ -9,26 +9,17 @@ extension InboxItem {
     }
 }
 
-/// The commands views and keys run on the inbox. Each finds its rows in the
-/// panel, asks the session to change them, keeps the undo and says what
-/// happened.
+/// The verbs views and keys run on the inbox's rows. Each finds its rows in
+/// the panel, asks the session to change them, keeps the undo and says what
+/// happened. Which verb a key runs on which kind of row is the command
+/// table's call (`Command.all`), so a verb here only handles its own kind.
 extension AppModel {
     // MARK: Verbs
 
-    /// Opens the selection in the browser and marks it read at once.
-    /// On a bundle, opens or closes it instead, and the panel stays.
+    /// Opens the selection in the browser and marks it read at once. True
+    /// when something opened, and the panel can close.
     @discardableResult
     func open(_ id: RowID? = nil) -> Bool {
-        switch id ?? panel.selectedID {
-        case .pullRequest(let pullRequestID):
-            openPullRequest(pullRequestID)
-            return true
-        case .bundle(let kind) where panel.checked.isEmpty:
-            panel.toggleBundle(kind)
-            return false
-        default:
-            break
-        }
         let items = panel.targets(id)
         guard let inbox, !items.isEmpty else { return false }
         // The practice inbox's threads have no page on GitHub.
@@ -100,10 +91,6 @@ extension AppModel {
     /// Opens the snooze picker. On the user's own pull request the reminder
     /// defaults to waiting for silence: a follow-up if no one answers.
     func beginSnooze(_ id: RowID? = nil) {
-        if case .pullRequest(let pullRequestID) = id ?? panel.selectedID {
-            beginReminder(pullRequestID)
-            return
-        }
         panel.snoozeTarget = .threads
         if let id { panel.select(id) }
         guard let item = panel.selectedItem else { return }
@@ -138,10 +125,6 @@ extension AppModel {
     }
 
     func copyLink(_ id: RowID? = nil) {
-        if case .pullRequest(let pullRequestID) = id ?? panel.selectedID {
-            copyPullRequestLink(pullRequestID)
-            return
-        }
         guard let item = panel.targets(id).first else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.thread.webURL.absoluteString, forType: .string)
