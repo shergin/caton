@@ -78,7 +78,7 @@ struct WriteTests {
         model.use(environment, subjects: subjects, viewer: Viewer(login: "me", nodeID: "U_me", scopes: ["repo"]))
         try await subjects.myPullRequests.refetch()
         model.show(.myPullRequests)
-        model.select("PR_7")
+        model.select(.pullRequest("PR_7"))
     }
 
     var requestedAt: Date? {

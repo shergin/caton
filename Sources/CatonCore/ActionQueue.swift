@@ -21,7 +21,9 @@ public struct QueuedAction: Codable, Identifiable, Hashable, Sendable {
     public let id: UUID
     /// The actions enqueued together; undo works on a batch.
     public let batch: UUID
-    public let threadID: String
+    /// The row the verb is for. Only a thread reaches GitHub; for a review
+    /// request the verb is recorded here alone.
+    public let item: ItemID
     public let verb: Verb
     /// The thread's `updatedAt` when the user acted: the activity the verb covers.
     public let activity: Date
@@ -32,6 +34,11 @@ public struct QueuedAction: Codable, Identifiable, Hashable, Sendable {
     public internal(set) var notBefore: Date
     public internal(set) var attempts: Int
     public internal(set) var phase: Phase
+
+    /// Saved under the name it had when only threads were queued.
+    private enum CodingKeys: String, CodingKey {
+        case id, batch, item = "threadID", verb, activity, subjectNodeID, rule, notBefore, attempts, phase
+    }
 }
 
 /// The persisted queue behind every optimistic action. Pure state: the app
@@ -39,12 +46,12 @@ public struct QueuedAction: Codable, Identifiable, Hashable, Sendable {
 /// what the inbox hides meanwhile.
 public struct ActionQueue: Codable, Hashable, Sendable {
     public struct Target: Hashable, Sendable {
-        public let threadID: String
+        public let item: ItemID
         public let activity: Date
         public let subjectNodeID: String?
 
-        public init(threadID: String, activity: Date, subjectNodeID: String? = nil) {
-            self.threadID = threadID
+        public init(item: ItemID, activity: Date, subjectNodeID: String? = nil) {
+            self.item = item
             self.activity = activity
             self.subjectNodeID = subjectNodeID
         }
@@ -63,13 +70,13 @@ public struct ActionQueue: Codable, Hashable, Sendable {
     @discardableResult
     public mutating func enqueue(_ verb: Verb, _ targets: [Target], rule: Rule? = nil, now: Date, grace: TimeInterval) -> UUID {
         let batch = UUID()
-        let threadIDs = Set(targets.map(\.threadID))
-        actions.removeAll { $0.phase == .queued && threadIDs.contains($0.threadID) && $0.verb.dismisses == verb.dismisses }
+        let items = Set(targets.map(\.item))
+        actions.removeAll { $0.phase == .queued && items.contains($0.item) && $0.verb.dismisses == verb.dismisses }
         for target in targets {
             actions.append(QueuedAction(
                 id: UUID(),
                 batch: batch,
-                threadID: target.threadID,
+                item: target.item,
                 verb: verb,
                 activity: target.activity,
                 subjectNodeID: target.subjectNodeID,
@@ -82,15 +89,15 @@ public struct ActionQueue: Codable, Hashable, Sendable {
         return batch
     }
 
-    /// The dismissing action pending for a thread, queued or in flight.
-    public func pendingDismissal(for threadID: String) -> QueuedAction? {
-        actions.last { $0.threadID == threadID && $0.verb.dismisses }
+    /// The dismissing action pending for a row, queued or in flight.
+    public func pendingDismissal(for item: ItemID) -> QueuedAction? {
+        actions.last { $0.item == item && $0.verb.dismisses }
     }
 
-    /// Whether a pending action hides this activity of the thread. New
-    /// activity after the action was taken shows the thread again.
-    public func hides(threadID: String, activity: Date) -> Bool {
-        guard let pending = pendingDismissal(for: threadID) else { return false }
+    /// Whether a pending action hides this activity of the row. New
+    /// activity after the action was taken shows it again.
+    public func hides(_ item: ItemID, activity: Date) -> Bool {
+        guard let pending = pendingDismissal(for: item) else { return false }
         return activity <= pending.activity
     }
 

@@ -63,7 +63,7 @@ public struct Snooze: Codable, Hashable, Sendable {
 public struct ClearedEntry: Codable, Identifiable, Hashable, Sendable {
     public let id: UUID
     public let batch: UUID
-    public let threadID: String
+    public let item: ItemID
     public let reference: String
     public let title: String
     public let webURL: URL
@@ -73,12 +73,17 @@ public struct ClearedEntry: Codable, Identifiable, Hashable, Sendable {
     public init(batch: UUID, thread: NotificationThread, rule: Rule?, at: Date) {
         id = UUID()
         self.batch = batch
-        threadID = thread.id
+        item = .thread(thread.id)
         reference = thread.reference
         title = thread.title
         webURL = thread.webURL
         self.rule = rule
         self.at = at
+    }
+
+    /// Saved under the name it had when only threads were cleared.
+    private enum CodingKeys: String, CodingKey {
+        case id, batch, item = "threadID", reference, title, webURL, rule, at
     }
 }
 
@@ -112,19 +117,19 @@ public struct Tally: Codable, Hashable, Sendable {
 /// agrees, local read marks, snoozes, the Later list, the Cleared log, rule
 /// exemptions, settings and the action queue. Persisted as one document.
 public struct LocalState: Codable, Hashable, Sendable {
-    public var dismissals: [String: Dismissal] = [:]
+    public var dismissals: [ItemID: Dismissal] = [:]
     /// Activity marked read here, until the feed reports it read.
-    public var readMarks: [String: Date] = [:]
-    public var snoozes: [String: Snooze] = [:]
+    public var readMarks: [ItemID: Date] = [:]
+    public var snoozes: [ItemID: Snooze] = [:]
     /// Threads saved for later, with when they were saved.
-    public var later: [String: Date] = [:]
+    public var later: [ItemID: Date] = [:]
     public var cleared: [ClearedEntry] = []
     /// Activity a rule must leave alone because the user undid the rule.
-    public var ruleExemptions: [String: Date] = [:]
+    public var ruleExemptions: [ItemID: Date] = [:]
     public var settings = ClassifierSettings()
     public var queue = ActionQueue()
     /// The activity of each Needs me thread a banner already covered.
-    public var alerted: [String: Date] = [:]
+    public var alerted: [ItemID: Date] = [:]
     /// Clears per day (`yyyy-MM-dd`), kept two weeks. Never leaves the Mac.
     public var tallies: [String: Tally] = [:]
     public var savedSearches: [SavedSearch] = []
@@ -143,15 +148,15 @@ public struct LocalState: Codable, Hashable, Sendable {
     /// Reads documents written by earlier versions: a missing key is empty.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        dismissals = try container.decodeIfPresent([String: Dismissal].self, forKey: .dismissals) ?? [:]
-        readMarks = try container.decodeIfPresent([String: Date].self, forKey: .readMarks) ?? [:]
-        snoozes = try container.decodeIfPresent([String: Snooze].self, forKey: .snoozes) ?? [:]
-        later = try container.decodeIfPresent([String: Date].self, forKey: .later) ?? [:]
+        dismissals = try container.decodeIfPresent([ItemID: Dismissal].self, forKey: .dismissals) ?? [:]
+        readMarks = try container.decodeIfPresent([ItemID: Date].self, forKey: .readMarks) ?? [:]
+        snoozes = try container.decodeIfPresent([ItemID: Snooze].self, forKey: .snoozes) ?? [:]
+        later = try container.decodeIfPresent([ItemID: Date].self, forKey: .later) ?? [:]
         cleared = try container.decodeIfPresent([ClearedEntry].self, forKey: .cleared) ?? []
-        ruleExemptions = try container.decodeIfPresent([String: Date].self, forKey: .ruleExemptions) ?? [:]
+        ruleExemptions = try container.decodeIfPresent([ItemID: Date].self, forKey: .ruleExemptions) ?? [:]
         settings = try container.decodeIfPresent(ClassifierSettings.self, forKey: .settings) ?? ClassifierSettings()
         queue = try container.decodeIfPresent(ActionQueue.self, forKey: .queue) ?? ActionQueue()
-        alerted = try container.decodeIfPresent([String: Date].self, forKey: .alerted) ?? [:]
+        alerted = try container.decodeIfPresent([ItemID: Date].self, forKey: .alerted) ?? [:]
         tallies = try container.decodeIfPresent([String: Tally].self, forKey: .tallies) ?? [:]
         savedSearches = try container.decodeIfPresent([SavedSearch].self, forKey: .savedSearches) ?? []
         followUps = try container.decodeIfPresent([String: FollowUp].self, forKey: .followUps) ?? [:]
@@ -181,14 +186,14 @@ public struct LocalState: Codable, Hashable, Sendable {
 
     /// Drops what no longer matters: old Cleared entries, and dismissals,
     /// marks and exemptions for threads the feed no longer returns.
-    public mutating func prune(liveThreadIDs: Set<String>, now: Date) {
+    public mutating func prune(liveIDs: Set<ItemID>, now: Date) {
         cleared.removeAll { now.timeIntervalSince($0.at) > Self.clearedRetention }
         dismissals = dismissals.filter { id, dismissal in
-            liveThreadIDs.contains(id) || now.timeIntervalSince(dismissal.at) < Self.dismissalRetention
+            liveIDs.contains(id) || now.timeIntervalSince(dismissal.at) < Self.dismissalRetention
         }
-        readMarks = readMarks.filter { liveThreadIDs.contains($0.key) }
-        ruleExemptions = ruleExemptions.filter { liveThreadIDs.contains($0.key) }
-        alerted = alerted.filter { liveThreadIDs.contains($0.key) }
+        readMarks = readMarks.filter { liveIDs.contains($0.key) }
+        ruleExemptions = ruleExemptions.filter { liveIDs.contains($0.key) }
+        alerted = alerted.filter { liveIDs.contains($0.key) }
         let oldest = Self.day(now.addingTimeInterval(-14 * 24 * 3600))
         tallies = tallies.filter { $0.key >= oldest }
     }

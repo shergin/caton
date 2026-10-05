@@ -17,13 +17,6 @@ public struct ThreadBundle: Hashable, Sendable {
         self.items = items
     }
 
-    public var id: String {
-        switch kind {
-        case .bot(let login): "bundle:bot:\(login)"
-        case .repository(let name): "bundle:repo:\(name)"
-        }
-    }
-
     public var title: String {
         switch kind {
         case .bot(let login): login
@@ -34,8 +27,26 @@ public struct ThreadBundle: Hashable, Sendable {
     public var unreadCount: Int { items.filter(\.isUnread).count }
 
     public var newest: Date { items.map(\.thread.updatedAt).max() ?? .distantPast }
+}
 
-    public static func isBundleID(_ id: String) -> Bool { id.hasPrefix("bundle:") }
+/// A row anywhere in the panel, as selection and SwiftUI know it.
+public enum RowID: Hashable, Sendable {
+    case header(String)
+    case item(ItemID)
+    case bundle(ThreadBundle.Kind)
+    /// One of the viewer's pull requests in My PRs, by node id.
+    case pullRequest(String)
+
+    public var isSelectable: Bool {
+        if case .header = self { return false }
+        return true
+    }
+
+    /// The inbox item the row is, if it is one.
+    public var item: ItemID? {
+        if case .item(let id) = self { return id }
+        return nil
+    }
 }
 
 /// One line of the list: a repository header, a thread, or a bundle.
@@ -45,18 +56,15 @@ public enum ListRow: Identifiable, Hashable, Sendable {
     case item(InboxItem, depth: Int)
     case bundle(ThreadBundle, isExpanded: Bool)
 
-    public var id: String {
+    public var id: RowID {
         switch self {
-        case .header(let title): "header:\(title)"
-        case .item(let item, _): item.id
-        case .bundle(let bundle, _): bundle.id
+        case .header(let title): .header(title)
+        case .item(let item, _): .item(item.id)
+        case .bundle(let bundle, _): .bundle(bundle.kind)
         }
     }
 
-    public var isSelectable: Bool {
-        if case .header = self { return false }
-        return true
-    }
+    public var isSelectable: Bool { id.isSelectable }
 }
 
 /// Lays a section's threads out as rows. Pure, so what collapses where is
@@ -80,7 +88,7 @@ public enum ListLayout {
         _ items: [InboxItem],
         groupByRepository: Bool,
         bundles: Bool,
-        expanded: Set<String>,
+        expanded: Set<ThreadBundle.Kind>,
         bot: (InboxItem) -> String?
     ) -> [ListRow] {
         var rows: [ListRow] = []
@@ -131,8 +139,8 @@ public enum ListLayout {
         return rows
     }
 
-    private static func append(_ bundle: ThreadBundle, to rows: inout [ListRow], expanded: Set<String>) {
-        let isExpanded = expanded.contains(bundle.id)
+    private static func append(_ bundle: ThreadBundle, to rows: inout [ListRow], expanded: Set<ThreadBundle.Kind>) {
+        let isExpanded = expanded.contains(bundle.kind)
         rows.append(.bundle(bundle, isExpanded: isExpanded))
         if isExpanded { rows += bundle.items.map { .item($0, depth: 1) } }
     }

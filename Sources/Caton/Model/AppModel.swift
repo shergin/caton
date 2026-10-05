@@ -64,8 +64,8 @@ final class AppModel {
     /// One step undo can take back.
     enum UndoEntry {
         case queued(UUID)
-        case snoozed([String: Snooze?])
-        case later([String: Date?])
+        case snoozed([ItemID: Snooze?])
+        case later([ItemID: Date?])
         case followUps([String: FollowUp?])
         /// A write to a pull request still in its undo window.
         case pullRequestWrite(String)
@@ -94,8 +94,8 @@ final class AppModel {
     private(set) var account: Account = .signedOut
     private(set) var snapshot = InboxSnapshot() { didSet { snapshotVersion &+= 1 } }
     var section: Section = .split(.needsMe)
-    var selectedID: String?
-    var checked: Set<String> = []
+    var selectedID: RowID?
+    var checked: Set<ItemID> = []
     private(set) var toasts: [Toast] = []
     var errorMessage: String?
     private(set) var signInError: String?
@@ -126,7 +126,7 @@ final class AppModel {
     var unreadOnly = false { didSet { reselect() } }
     var groupByRepository = true
     /// Feed bundles the user opened.
-    var expandedBundles: Set<String> = []
+    var expandedBundles: Set<ThreadBundle.Kind> = []
     var isPanelVisible = false {
         didSet {
             guard isPanelVisible != oldValue else { return }
@@ -171,7 +171,7 @@ final class AppModel {
     @ObservationIgnored var dispatchTask: Task<Void, Never>?
     @ObservationIgnored var undoStack: [UndoEntry] = []
     /// Snoozes that ended this session, and why, so the note outlives the snooze.
-    @ObservationIgnored var wokenSnoozes: [String: Resurfacing] = [:]
+    @ObservationIgnored var wokenSnoozes: [ItemID: Resurfacing] = [:]
     /// Repositories in the order the open panel first showed them.
     @ObservationIgnored var repositoryOrder: [RepositoryName] = [] {
         didSet { if repositoryOrder.isEmpty { listCache = nil } }
@@ -600,11 +600,12 @@ final class AppModel {
         // Forget read threads nobody will see again.
         let horizon = Date.now.addingTimeInterval(-4 * Self.recentWindow)
         threads = threads.filter { $0.value.isUnread || $0.value.updatedAt > horizon }
-        let live = allThreads
-        state.prune(liveThreadIDs: Set(live.map(\.id)), now: .now)
+        state.prune(liveIDs: liveIDs, now: .now)
         // Read marks the feed now agrees with are no longer needed.
-        let byID = Dictionary(live.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        state.readMarks = state.readMarks.filter { id, mark in byID[id].map { $0.isUnread && $0.updatedAt <= mark } ?? false }
+        state.readMarks = state.readMarks.filter { id, mark in
+            guard case .thread(let threadID) = id, let thread = threads[threadID] else { return false }
+            return thread.isUnread && thread.updatedAt <= mark
+        }
         subjects?.sync(Array(threads.values))
         recompute()
         return true
@@ -612,13 +613,16 @@ final class AppModel {
 
     // MARK: Projection
 
-    /// The feed's threads plus review requests that have no notification.
-    var allThreads: [NotificationThread] {
-        let feed = Array(threads.values)
-        if isPractice { return feed }
-        guard let requests = subjects?.reviewRequestThreads, !requests.isEmpty else { return feed }
-        let known = Set(feed.filter { $0.kind == .pullRequest }.map(\.reference))
-        return feed + requests.filter { !known.contains($0.reference) }
+    /// Open pull requests that request the viewer with no notification
+    /// thread; none in practice.
+    var reviewRequests: [NotificationThread] {
+        isPractice ? [] : subjects?.reviewRequestThreads ?? []
+    }
+
+    /// Every row local state may refer to: the feed's threads and the review
+    /// requests.
+    private var liveIDs: Set<ItemID> {
+        Set(threads.keys.map(ItemID.thread)).union(reviewRequests.map { .reviewRequest($0.id) })
     }
 
     private func scheduleRecompute() {
@@ -634,10 +638,13 @@ final class AppModel {
     func recompute() {
         let now = Date.now
         let reminders = dueReminders(now: now)
-        var next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, reminders: reminders, now: now)
+        let project = { [unowned self] in
+            InboxProjection.project(threads: threads.values, reviewRequests: reviewRequests, reminders: reminders, facts: { self.facts(for: $0) }, state: state, now: now)
+        }
+        var next = project()
         if !next.autoClears.isEmpty {
             applyRuleClears(next.autoClears, now: now)
-            next = InboxProjection.project(threads: allThreads, facts: { [unowned self] in facts(for: $0) }, state: state, reminders: reminders, now: now)
+            next = project()
         }
         for (id, why) in next.wokenSnoozes {
             state.snoozes[id] = nil
@@ -667,13 +674,13 @@ final class AppModel {
         let byRule = Dictionary(grouping: clears, by: \.rule)
         for (rule, clears) in byRule {
             if preferences.syncRuleClears {
-                let batch = state.queue.enqueue(.done, clears.map { .init(threadID: $0.thread.id, activity: $0.thread.updatedAt, subjectNodeID: $0.subjectNodeID) }, rule: rule, now: now, grace: Self.grace)
+                let batch = state.queue.enqueue(.done, clears.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: $0.subjectNodeID) }, rule: rule, now: now, grace: Self.grace)
                 state.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
             } else {
                 // Local only until the user lets rules mark threads done on GitHub.
                 let batch = UUID()
                 for clear in clears {
-                    state.dismissals[clear.thread.id] = Dismissal(cause: .rule(rule), activity: clear.thread.updatedAt, at: now)
+                    state.dismissals[clear.id] = Dismissal(cause: .rule(rule), activity: clear.thread.updatedAt, at: now)
                 }
                 state.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
             }
@@ -713,7 +720,7 @@ final class AppModel {
     private func prepareWelcome() {
         guard case .signedIn(let viewer) = account, !preferences.welcomedAccounts.contains(viewer.login) else { return }
         welcome = Welcome(
-            total: allThreads.count,
+            total: threads.count + reviewRequests.count,
             needsMe: snapshot.count(.needsMe),
             cleared: Dictionary(grouping: state.cleared.compactMap(\.rule), by: { $0 }).mapValues(\.count)
         )
@@ -730,8 +737,8 @@ final class AppModel {
             // Rule clears so far stayed local; now they reach GitHub too, but
             // only where the clear still covers the thread's latest activity.
             let targets = state.dismissals.compactMap { id, dismissal -> ActionQueue.Target? in
-                guard case .rule = dismissal.cause, let thread = threads[id], thread.updatedAt <= dismissal.activity else { return nil }
-                return ActionQueue.Target(threadID: id, activity: dismissal.activity)
+                guard case .rule = dismissal.cause, case .thread(let threadID) = id, let thread = threads[threadID], thread.updatedAt <= dismissal.activity else { return nil }
+                return ActionQueue.Target(item: id, activity: dismissal.activity)
             }
             if !targets.isEmpty {
                 state.queue.enqueue(.done, targets, now: .now, grace: Self.grace)
@@ -787,10 +794,12 @@ final class AppModel {
         if overlay == .tips { overlay = .none }
     }
 
-    /// Shows a thread a banner named.
-    func reveal(_ threadID: String?) {
+    /// Shows the row a banner named, by its key.
+    func reveal(_ key: String?) {
         show(.split(.needsMe))
-        if let threadID, visibleItems.contains(where: { $0.id == threadID }) { select(threadID) }
+        guard let key else { return }
+        let id = ItemID(key: key)
+        if visibleItems.contains(where: { $0.id == id }) { select(.item(id)) }
     }
 
     // MARK: Feedback
@@ -853,13 +862,13 @@ final class AppModel {
 
     // MARK: Row data
 
-    func lenses(for id: String) -> SubjectStore.Lenses {
+    func lenses(for id: ItemID) -> SubjectStore.Lenses {
         if isPractice { return SubjectStore.Lenses() }
         return reminderLenses(id) ?? subjects?.lenses(for: id) ?? SubjectStore.Lenses()
     }
 
-    func facts(for thread: NotificationThread) -> SubjectFacts? {
-        isPractice ? practiceFacts[thread.id] : subjects?.facts(for: thread)
+    func facts(for id: ItemID) -> SubjectFacts? {
+        isPractice ? practiceFacts[id.key] : subjects?.facts(for: id)
     }
 
     // MARK: Practice
@@ -916,7 +925,7 @@ final class AppModel {
 
     /// "open pull request, checks failing, by dependabot (bot)", for VoiceOver.
     func spokenState(for item: InboxItem) -> String {
-        guard let facts = facts(for: item.thread) else { return "" }
+        guard let facts = facts(for: item.id) else { return "" }
         var parts: [String] = []
         let kind = item.thread.kind == .pullRequest ? "pull request" : "issue"
         switch facts.state {
@@ -948,7 +957,7 @@ final class AppModel {
     /// Prints the inbox as classified, for checking rules against a real account.
     private func dump() {
         let counts = Split.allCases.map { "\($0.title) \(snapshot.count($0))" }.joined(separator: " · ")
-        let enriched = threads.values.filter { subjects?.facts(for: $0) != nil }.count
+        let enriched = threads.keys.filter { subjects?.facts(for: .thread($0)) != nil }.count
         let requests = subjects?.reviewRequestThreads.count ?? 0
         let mine = myPullRequestNodes.map { MyPullRequests.status($0.pullRequestStanding) }.map { PullRequestStanding.of($0).summary(now: .now) }
         log("[caton] my pull requests \(mine.count): \(mine.prefix(6).joined(separator: " | "))")

@@ -83,3 +83,21 @@ func notificationJSON(id: String, type: String = "PullRequest", number: Int = 42
      "repository":{"name":"web","full_name":"acme/web","owner":{"login":"acme"},"html_url":"https://github.com/acme/web"}}
     """
 }
+
+/// Tests name threads by their REST id, as the feed does.
+extension ItemID: ExpressibleByStringLiteral {
+    public init(stringLiteral key: String) { self.init(key: key) }
+}
+
+extension RowID {
+    /// A row as a short string, so expected layouts read as lists.
+    var label: String {
+        switch self {
+        case .header(let title): "header:\(title)"
+        case .item(let id): id.key
+        case .bundle(.bot(let login)): "bundle:bot:\(login)"
+        case .bundle(.repository(let name)): "bundle:repo:\(name)"
+        case .pullRequest(let id): "pr:\(id)"
+        }
+    }
+}

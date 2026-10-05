@@ -30,9 +30,9 @@ final class Banners: NSObject, UNUserNotificationCenterDelegate {
             content.subtitle = item.thread.reference
             content.body = item.thread.title
             content.threadIdentifier = "needs-me"
-            content.userInfo = ["thread": item.id]
-            // One banner per thread: newer activity replaces the older banner.
-            center.add(UNNotificationRequest(identifier: item.id, content: content, trigger: nil))
+            content.userInfo = ["thread": item.id.key]
+            // One banner per row: newer activity replaces the older banner.
+            center.add(UNNotificationRequest(identifier: item.id.key, content: content, trigger: nil))
         }
         if decision.overflow > 0 {
             let content = UNMutableNotificationContent()
@@ -53,8 +53,8 @@ final class Banners: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Takes back banners for threads that no longer need the user.
-    func withdraw(_ threadIDs: [String]) {
-        center?.removeDeliveredNotifications(withIdentifiers: threadIDs)
+    func withdraw(_ ids: [ItemID]) {
+        center?.removeDeliveredNotifications(withIdentifiers: ids.map(\.key))
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

@@ -50,9 +50,6 @@ final class SubjectStore {
 
     typealias ReviewRequest = ReviewRequestsQuery.Data.Search.Nodes.AsPullRequest
 
-    /// Threads built from review requests that have no notification carry
-    /// this prefix; they have no thread on GitHub to mark.
-    static let reviewRequestPrefix = "review:"
     static let reviewRequestInterval: TimeInterval = 5 * 60
     static let concurrency = 4
     static let batchSize = 50
@@ -74,8 +71,9 @@ final class SubjectStore {
     private var lastRefresh = Date.distantPast
     private let reviewRequests: OperationHandle<ReviewRequestsQuery>
     private var lastReviewRequestSearch = Date.distantPast
-    private var reviewRequestsByThreadID: [String: ReviewRequest] = [:]
-    /// Review requests without a notification thread, as threads.
+    private var reviewRequestsByNodeID: [String: ReviewRequest] = [:]
+    /// Open pull requests that request the viewer, in a thread's shape with
+    /// the pull request's node id as `id`.
     private(set) var reviewRequestThreads: [NotificationThread] = []
     /// The viewer's open pull requests. This is the operation the My PRs view
     /// declares, asked for by value: the environment hands the view and this
@@ -119,14 +117,13 @@ final class SubjectStore {
 
     private func indexReviewRequests() {
         guard case .ready(let data) = reviewRequests.phase, let nodes = data.search.nodes else { return }
-        var byThreadID: [String: ReviewRequest] = [:]
+        var byNodeID: [String: ReviewRequest] = [:]
         var threads: [NotificationThread] = []
         for node in nodes {
             guard let pullRequest = node.asPullRequest, let url = URL(string: pullRequest.url) else { continue }
-            let id = Self.reviewRequestPrefix + pullRequest.id
-            byThreadID[id] = pullRequest
+            byNodeID[pullRequest.id] = pullRequest
             threads.append(NotificationThread(
-                id: id,
+                id: pullRequest.id,
                 repository: RepositoryName(owner: pullRequest.repository.owner.login, name: pullRequest.repository.name),
                 kind: .pullRequest,
                 number: pullRequest.number,
@@ -137,7 +134,7 @@ final class SubjectStore {
                 webURL: url
             ))
         }
-        reviewRequestsByThreadID = byThreadID
+        reviewRequestsByNodeID = byNodeID
         reviewRequestThreads = threads
     }
 
@@ -169,7 +166,7 @@ final class SubjectStore {
         if now.timeIntervalSince(lastRefresh) > Self.refreshInterval {
             lastRefresh = now
             let open = enrichable.filter { thread in
-                guard let facts = facts(for: thread) else { return false }
+                guard let facts = facts(forThread: thread.id) else { return false }
                 return facts.state == .open && !stale.contains(where: { $0.id == thread.id })
             }
             stale += open
@@ -179,11 +176,16 @@ final class SubjectStore {
     }
 
     /// The facts classification reads, once the subject is loaded.
-    func facts(for thread: NotificationThread) -> SubjectFacts? {
-        if let reviewRequest = reviewRequestsByThreadID[thread.id] {
-            return reviewRequest.pullRequestFacts.facts(viewerID: viewerID)
+    func facts(for id: ItemID) -> SubjectFacts? {
+        switch id {
+        case .thread(let threadID): facts(forThread: threadID)
+        case .reviewRequest(let nodeID): reviewRequestsByNodeID[nodeID]?.pullRequestFacts.facts(viewerID: viewerID)
+        case .followUp: nil
         }
-        switch handles[thread.id] {
+    }
+
+    private func facts(forThread threadID: String) -> SubjectFacts? {
+        switch handles[threadID] {
         case .pullRequest(let handle):
             guard case .ready(let data) = handle.phase, let pullRequest = data.repository?.pullRequest else { return nil }
             return pullRequest.pullRequestFacts.facts(viewerID: viewerID)
@@ -196,10 +198,19 @@ final class SubjectStore {
     }
 
     /// What a row renders, once the subject is loaded.
-    func lenses(for threadID: String) -> Lenses {
-        if let reviewRequest = reviewRequestsByThreadID[threadID] {
+    func lenses(for id: ItemID) -> Lenses {
+        switch id {
+        case .thread(let threadID):
+            return lenses(forThread: threadID)
+        case .reviewRequest(let nodeID):
+            guard let reviewRequest = reviewRequestsByNodeID[nodeID] else { return Lenses() }
             return Lenses(pullRequestIcon: reviewRequest.pullRequestIcon, pullRequestSignals: reviewRequest.pullRequestSignals)
+        case .followUp:
+            return Lenses()
         }
+    }
+
+    private func lenses(forThread threadID: String) -> Lenses {
         switch handles[threadID] {
         case .pullRequest(let handle):
             guard case .ready(let data) = handle.phase, let pullRequest = data.repository?.pullRequest else { return Lenses() }
@@ -281,7 +292,7 @@ final class SubjectStore {
         var pullRequests: [(String, NotificationThread)] = []
         var issues: [(String, NotificationThread)] = []
         for thread in threads {
-            guard let nodeID = facts(for: thread)?.nodeID else { continue }
+            guard let nodeID = facts(forThread: thread.id)?.nodeID else { continue }
             if thread.kind == .pullRequest { pullRequests.append((nodeID, thread)) } else { issues.append((nodeID, thread)) }
         }
         for chunk in pullRequests.chunked(Self.batchSize) {

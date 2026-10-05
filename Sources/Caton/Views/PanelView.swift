@@ -179,7 +179,7 @@ struct InboxView: View {
     private func list(_ rows: [ListRow]) -> some View {
         let waiting = model.section == .split(.needsMe)
         // Threads inside a bot's bundle come from many repositories.
-        let acrossRepositories = Set(rows.flatMap { row -> [String] in
+        let acrossRepositories = Set(rows.flatMap { row -> [ItemID] in
             guard case .bundle(let bundle, true) = row, case .bot = bundle.kind else { return [] }
             return bundle.items.map(\.id)
         })
@@ -200,32 +200,32 @@ struct InboxView: View {
                             BundleRow(
                                 bundle: bundle,
                                 isExpanded: isExpanded,
-                                isSelected: model.selectedID == bundle.id,
-                                onToggle: { model.toggleBundle(bundle.id) },
-                                onDone: { model.done(bundle.id) }
+                                isSelected: model.selectedID == row.id,
+                                onToggle: { model.toggleBundle(bundle.kind) },
+                                onDone: { model.done(row.id) }
                             )
-                            .id(bundle.id)
+                            .id(row.id)
                         case .item(let item, let depth):
                             ThreadRow(
                                 item: item,
-                                isSelected: model.selectedID == item.id,
+                                isSelected: model.selectedID == row.id,
                                 isChecked: model.checked.contains(item.id),
                                 showsWaiting: waiting,
                                 showsRepository: !model.groupByRepository || acrossRepositories.contains(item.id),
                                 lenses: model.lenses(for: item.id),
                                 spokenState: model.spokenState(for: item),
-                                fallback: model.isPractice ? model.facts(for: item.thread) : nil,
+                                fallback: model.isPractice ? model.facts(for: item.id) : nil,
                                 onOpen: {
-                                    model.select(item.id)
-                                    if model.open(item.id) { close() }
+                                    model.select(row.id)
+                                    if model.open(row.id) { close() }
                                 },
-                                onToggleCheck: { model.toggleChecked(item.id) },
-                                onDone: { model.done(item.id) },
-                                onSnooze: { model.beginSnooze(item.id) },
-                                onUnsubscribe: { model.unsubscribe(item.id) }
+                                onToggleCheck: { model.toggleChecked(row.id) },
+                                onDone: { model.done(row.id) },
+                                onSnooze: { model.beginSnooze(row.id) },
+                                onUnsubscribe: { model.unsubscribe(row.id) }
                             )
                             .padding(.leading, depth > 0 ? 14 : 0)
-                            .id(item.id)
+                            .id(row.id)
                         }
                     }
                 }
@@ -259,7 +259,7 @@ struct InboxView: View {
             ZeroPicker(model: model)
         case .why:
             if let item = model.selectedItem {
-                WhyCard(item: item, actor: model.facts(for: item.thread)?.author?.login)
+                WhyCard(item: item, actor: model.facts(for: item.id)?.author?.login)
                     .onTapGesture { model.overlay = .none }
             }
         case .tips:

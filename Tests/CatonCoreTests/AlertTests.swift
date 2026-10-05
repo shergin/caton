@@ -22,7 +22,7 @@ struct AlertTests {
         )
     }
 
-    func decide(_ items: [InboxItem], alerted: [String: Date] = [:], panel: Bool = false, baseline: Bool = false, enabled: Bool = true) -> AlertDecision {
+    func decide(_ items: [InboxItem], alerted: [ItemID: Date] = [:], panel: Bool = false, baseline: Bool = false, enabled: Bool = true) -> AlertDecision {
         AlertPolicy.decide(needsMe: items, alerted: alerted, isPanelVisible: panel, quietHours: QuietHours(isEnabled: false), isEnabled: enabled, isBaseline: baseline, now: reference)
     }
 

@@ -29,7 +29,7 @@ struct Command: Identifiable {
         Command("read", "Mark read", keys: "m") { $0.markRead() },
         Command("select", "Select for bulk", keys: "x") { $0.toggleChecked() },
         Command("bundle", "Open or close a Feed bundle", keys: "→  ←") { model in
-            if let bundle = model.selectedBundle { model.toggleBundle(bundle.id) } else { model.collapseSelection() }
+            if let bundle = model.selectedBundle { model.toggleBundle(bundle.kind) } else { model.collapseSelection() }
         },
         Command("undo", "Undo", keys: "z  ⌘Z") { $0.undo() },
         Command("copy", "Copy link", keys: "y") { $0.copyLink() },

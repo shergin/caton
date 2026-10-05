@@ -26,30 +26,29 @@ extension AppModel {
     private func execute(_ action: QueuedAction) async {
         let rest = isPractice ? nil : rest
         guard rest != nil || isPractice else { return }
-        // A thread Caton made up (a review request found by search) has
-        // nothing on GitHub to change.
-        let hasThread = action.threadID.allSatisfy(\.isNumber)
         do {
-            if !dryRun, hasThread, let rest {
+            // Only a thread exists on GitHub; a review request found by search
+            // is dismissed here alone.
+            if !dryRun, case .thread(let threadID) = action.item, let rest {
                 switch action.verb {
                 case .markRead:
-                    try await rest.markRead(threadID: action.threadID)
+                    try await rest.markRead(threadID: threadID)
                 case .done:
-                    try await rest.markDone(threadID: action.threadID)
+                    try await rest.markDone(threadID: threadID)
                 case .unsubscribe:
-                    try await rest.unsubscribe(threadID: action.threadID)
-                    try await rest.markDone(threadID: action.threadID)
+                    try await rest.unsubscribe(threadID: threadID)
+                    try await rest.markDone(threadID: threadID)
                 case .ignore:
-                    try await rest.ignore(threadID: action.threadID)
-                    try await rest.markDone(threadID: action.threadID)
+                    try await rest.ignore(threadID: threadID)
+                    try await rest.markDone(threadID: threadID)
                 }
             }
             state.queue.complete(action.id)
             switch action.verb {
             case .markRead: break
-            case .done: state.dismissals[action.threadID] = Dismissal(cause: action.rule.map { .rule($0) } ?? .done, activity: action.activity, at: .now)
-            case .unsubscribe: state.dismissals[action.threadID] = Dismissal(cause: .unsubscribe, activity: action.activity, at: .now)
-            case .ignore: state.dismissals[action.threadID] = Dismissal(cause: .ignore, activity: action.activity, at: .now)
+            case .done: state.dismissals[action.item] = Dismissal(cause: action.rule.map { .rule($0) } ?? .done, activity: action.activity, at: .now)
+            case .unsubscribe: state.dismissals[action.item] = Dismissal(cause: .unsubscribe, activity: action.activity, at: .now)
+            case .ignore: state.dismissals[action.item] = Dismissal(cause: .ignore, activity: action.activity, at: .now)
             }
             save()
         } catch GitHubError.unauthorized {
@@ -61,8 +60,8 @@ extension AppModel {
         } catch {
             let retryable = (error as? GitHubError)?.isRetryable ?? true
             if let dropped = state.queue.fail(action.id, retryable: retryable, now: .now) {
-                state.readMarks[dropped.threadID] = nil
-                let reference = threads[dropped.threadID]?.reference ?? "a thread"
+                state.readMarks[dropped.item] = nil
+                let reference = if case .thread(let id) = dropped.item { threads[id]?.reference ?? "a thread" } else { "a thread" }
                 errorMessage = "Couldn't \(dropped.verb.failureTitle) \(reference): \(error.localizedDescription)"
                 recompute()
             }

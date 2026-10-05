@@ -49,7 +49,7 @@ struct ThreadRow: View {
                         .truncationMode(.middle)
                     if let note = item.resurfacing?.note {
                         Text(note).foregroundStyle(.orange).lineLimit(1)
-                    } else if item.id.hasPrefix(SubjectStore.reviewRequestPrefix) {
+                    } else if case .reviewRequest = item.id {
                         Text("no notification").foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }

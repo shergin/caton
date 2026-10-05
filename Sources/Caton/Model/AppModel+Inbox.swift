@@ -1,6 +1,14 @@
 import AppKit
 import CatonCore
 
+extension InboxItem {
+    /// Whether the row is a reminder Caton made, which verbs settle locally.
+    var isReminder: Bool {
+        if case .followUp = id { return true }
+        return false
+    }
+}
+
 /// What the list shows, moving through it, and the verbs.
 extension AppModel {
     // MARK: What the list shows
@@ -16,7 +24,7 @@ extension AppModel {
             var query: String
             var unreadOnly: Bool
             var grouped: Bool
-            var expanded: Set<String>
+            var expanded: Set<ThreadBundle.Kind>
         }
 
         let key: Key
@@ -48,7 +56,7 @@ extension AppModel {
         let items = layoutItems()
         let bundles = section == .split(.feed) && SearchQuery(searchQuery).isEmpty
         let rows = ListLayout.rows(items, groupByRepository: groupByRepository, bundles: bundles, expanded: expandedBundles) { [self] item in
-            item.classification.actorKind == .bot ? facts(for: item.thread)?.author?.login : nil
+            item.classification.actorKind == .bot ? facts(for: item.id)?.author?.login : nil
         }
         let cache = ListCache(key: key, items: items, rows: rows)
         listCache = cache
@@ -68,7 +76,7 @@ extension AppModel {
         if unreadOnly { items = items.filter(\.isUnread) }
         let query = SearchQuery(searchQuery)
         if !query.isEmpty {
-            items = items.filter { query.matches($0, facts: facts(for: $0.thread)) }
+            items = items.filter { query.matches($0, facts: facts(for: $0.id)) }
         }
         guard groupByRepository else { return items }
         // Repository order holds while the panel is open, so rows do not jump.
@@ -84,23 +92,23 @@ extension AppModel {
             .map { items[$0] }
     }
 
-    /// The ids selection moves through, in order.
-    private var selectableIDs: [String] {
-        if section == .myPullRequests { return myPullRequestNodes.map(\.id) }
+    /// The rows selection moves through, in order.
+    private var selectableIDs: [RowID] {
+        if section == .myPullRequests { return myPullRequestNodes.map { .pullRequest($0.id) } }
         return visibleRows.filter(\.isSelectable).map(\.id)
     }
 
     var needsMeCount: Int { snapshot.count(.needsMe) }
 
-    var selectedItem: InboxItem? { visibleItems.first { $0.id == selectedID } }
+    var selectedItem: InboxItem? {
+        guard let id = selectedID?.item else { return nil }
+        return visibleItems.first { $0.id == id }
+    }
 
     /// The bundle the selection is on, if it is on one.
     var selectedBundle: ThreadBundle? {
-        guard let selectedID, ThreadBundle.isBundleID(selectedID) else { return nil }
-        for row in visibleRows {
-            if case .bundle(let bundle, _) = row, bundle.id == selectedID { return bundle }
-        }
-        return nil
+        guard case .bundle(let kind) = selectedID else { return nil }
+        return bundle(kind)
     }
 
     func count(_ section: Section) -> Int {
@@ -158,7 +166,7 @@ extension AppModel {
     private func savedItems(_ id: UUID) -> [InboxItem] {
         guard let saved = state.savedSearches.first(where: { $0.id == id }) else { return [] }
         let query = SearchQuery(saved.query)
-        return Split.allCases.flatMap { snapshot.items(in: $0) }.filter { query.matches($0, facts: facts(for: $0.thread)) }
+        return Split.allCases.flatMap { snapshot.items(in: $0) }.filter { query.matches($0, facts: facts(for: $0.id)) }
     }
 
     /// Asks for a name for the current search.
@@ -201,10 +209,10 @@ extension AppModel {
     }
 
     /// Selects a row; a thread inside a closed bundle opens the bundle.
-    func select(_ id: String) {
+    func select(_ id: RowID) {
         var ids = selectableIDs
-        if !ids.contains(id), let bundle = bundle(containing: id) {
-            expandedBundles.insert(bundle.id)
+        if !ids.contains(id), let item = id.item, let bundle = bundle(containing: item) {
+            expandedBundles.insert(bundle.kind)
             ids = selectableIDs
         }
         selectedID = id
@@ -234,8 +242,8 @@ extension AppModel {
             selectedIndexHint = index
             return
         }
-        if let selectedID, let bundle = bundle(containing: selectedID), let index = ids.firstIndex(of: bundle.id) {
-            self.selectedID = bundle.id
+        if let item = selectedID?.item, let bundle = bundle(containing: item), let index = ids.firstIndex(of: .bundle(bundle.kind)) {
+            selectedID = .bundle(bundle.kind)
             selectedIndexHint = index
             return
         }
@@ -246,72 +254,73 @@ extension AppModel {
 
     // MARK: Bundles
 
+    /// The bundle of a kind in the current layout.
+    func bundle(_ kind: ThreadBundle.Kind) -> ThreadBundle? {
+        for row in visibleRows {
+            if case .bundle(let bundle, _) = row, bundle.kind == kind { return bundle }
+        }
+        return nil
+    }
+
     /// The bundle a thread belongs to in the current layout.
-    func bundle(containing id: String) -> ThreadBundle? {
+    func bundle(containing id: ItemID) -> ThreadBundle? {
         for row in visibleRows {
             if case .bundle(let bundle, _) = row, bundle.items.contains(where: { $0.id == id }) { return bundle }
         }
         return nil
     }
 
-    func toggleBundle(_ id: String) {
-        if expandedBundles.contains(id) { expandedBundles.remove(id) } else { expandedBundles.insert(id) }
-        selectedID = id
+    func toggleBundle(_ kind: ThreadBundle.Kind) {
+        if expandedBundles.contains(kind) { expandedBundles.remove(kind) } else { expandedBundles.insert(kind) }
+        selectedID = .bundle(kind)
         reselect()
     }
 
     /// Right arrow: opens the selected bundle.
     func expandSelection() {
-        guard let bundle = selectedBundle, !expandedBundles.contains(bundle.id) else { return }
-        toggleBundle(bundle.id)
+        guard let bundle = selectedBundle, !expandedBundles.contains(bundle.kind) else { return }
+        toggleBundle(bundle.kind)
     }
 
     /// Left arrow: closes the selected bundle, or the bundle around the
     /// selected thread, and selects it.
     func collapseSelection() {
-        guard let selectedID else { return }
-        if ThreadBundle.isBundleID(selectedID) {
-            if expandedBundles.contains(selectedID) { toggleBundle(selectedID) }
-        } else if let bundle = bundle(containing: selectedID) {
-            toggleBundle(bundle.id)
+        switch selectedID {
+        case .bundle(let kind):
+            if expandedBundles.contains(kind) { toggleBundle(kind) }
+        case .item(let item):
+            if let bundle = bundle(containing: item) { toggleBundle(bundle.kind) }
+        case .header, .pullRequest, nil:
+            break
         }
     }
 
     /// Checks a thread for bulk verbs; on a bundle, all of its threads.
-    func toggleChecked(_ id: String? = nil) {
-        guard let id = id ?? selectedID else { return }
-        if ThreadBundle.isBundleID(id) {
-            guard let bundle = visibleRows.lazy.compactMap({ row -> ThreadBundle? in
-                if case .bundle(let bundle, _) = row, bundle.id == id { return bundle }
-                return nil
-            }).first else { return }
+    func toggleChecked(_ id: RowID? = nil) {
+        switch id ?? selectedID {
+        case .bundle(let kind):
+            guard let bundle = bundle(kind) else { return }
             let ids = Set(bundle.items.map(\.id))
             if ids.isSubset(of: checked) { checked.subtract(ids) } else { checked.formUnion(ids) }
-            return
+        case .item(let item):
+            if checked.contains(item) { checked.remove(item) } else { checked.insert(item) }
+        case .header, .pullRequest, nil:
+            break
         }
-        if checked.contains(id) { checked.remove(id) } else { checked.insert(id) }
     }
 
     func clearChecked() { checked.removeAll() }
 
-    /// The threads a verb applies to: the checked ones, else the selection,
+    /// The rows a verb applies to: the checked ones, else the selection,
     /// which on a bundle is all of its threads.
-    func targets(_ id: String? = nil) -> [InboxItem] {
+    func targets(_ id: RowID? = nil) -> [InboxItem] {
         let items = visibleItems
-        if let id {
-            if ThreadBundle.isBundleID(id) { return bundleItems(id) }
-            return items.filter { $0.id == id }
+        if id == nil, !checked.isEmpty { return items.filter { checked.contains($0.id) } }
+        switch id ?? selectedID {
+        case .bundle(let kind): return bundle(kind)?.items ?? []
+        case .item(let item): return items.filter { $0.id == item }
+        case .header, .pullRequest, nil: return []
         }
-        if !checked.isEmpty { return items.filter { checked.contains($0.id) } }
-        if let selectedID, ThreadBundle.isBundleID(selectedID) { return bundleItems(selectedID) }
-        return items.filter { $0.id == selectedID }
-    }
-
-    private func bundleItems(_ id: String) -> [InboxItem] {
-        for row in visibleRows {
-            if case .bundle(let bundle, _) = row, bundle.id == id { return bundle.items }
-        }
-        return []
     }
 
     // MARK: Verbs
@@ -319,23 +328,26 @@ extension AppModel {
     /// Opens the selection in the browser and marks it read at once.
     /// On a bundle, opens or closes it instead, and the panel stays.
     @discardableResult
-    func open(_ id: String? = nil) -> Bool {
-        if section == .myPullRequests {
-            openPullRequest(id)
+    func open(_ id: RowID? = nil) -> Bool {
+        switch id ?? selectedID {
+        case .pullRequest(let pullRequestID):
+            openPullRequest(pullRequestID)
             return true
-        }
-        if checked.isEmpty, let bundleID = id ?? selectedID, ThreadBundle.isBundleID(bundleID) {
-            toggleBundle(bundleID)
+        case .bundle(let kind) where checked.isEmpty:
+            toggleBundle(kind)
             return false
+        default:
+            break
         }
         let items = targets(id)
         guard !items.isEmpty else { return false }
         for item in items {
             // Practice threads have no page on GitHub.
             if !isPractice { openURL(item.thread.webURL) }
-            if item.isUnread, item.thread.isFromFeed {
+            // Only a thread has a read state on GitHub to change.
+            if item.isUnread, item.id.isThread {
                 state.readMarks[item.id] = item.thread.updatedAt
-                state.queue.enqueue(.markRead, [.init(threadID: item.id, activity: item.thread.updatedAt)], now: .now, grace: 0)
+                state.queue.enqueue(.markRead, [.init(item: item.id, activity: item.thread.updatedAt)], now: .now, grace: 0)
             }
         }
         checked.removeAll()
@@ -344,27 +356,27 @@ extension AppModel {
         return true
     }
 
-    func markRead(_ id: String? = nil) {
-        let items = targets(id).filter(\.isUnread)
+    func markRead(_ id: RowID? = nil) {
+        let items = targets(id).filter { $0.isUnread && $0.id.isThread }
         guard !items.isEmpty else { return }
         for item in items { state.readMarks[item.id] = item.thread.updatedAt }
-        state.queue.enqueue(.markRead, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt) }, now: .now, grace: 0)
+        state.queue.enqueue(.markRead, items.map { .init(item: $0.id, activity: $0.thread.updatedAt) }, now: .now, grace: 0)
         checked.removeAll()
         recompute()
     }
 
-    func done(_ id: String? = nil) { dismiss(.done, id, verbTitle: "Done") }
-    func unsubscribe(_ id: String? = nil) { dismiss(.unsubscribe, id, verbTitle: "Unsubscribed") }
-    func ignore(_ id: String? = nil) { dismiss(.ignore, id, verbTitle: "Ignored") }
+    func done(_ id: RowID? = nil) { dismiss(.done, id, verbTitle: "Done") }
+    func unsubscribe(_ id: RowID? = nil) { dismiss(.unsubscribe, id, verbTitle: "Unsubscribed") }
+    func ignore(_ id: RowID? = nil) { dismiss(.ignore, id, verbTitle: "Ignored") }
 
-    private func dismiss(_ verb: Verb, _ id: String?, verbTitle: String) {
+    private func dismiss(_ verb: Verb, _ id: RowID?, verbTitle: String) {
         var items = targets(id)
         guard !items.isEmpty else { return }
         // A reminder row is Caton's own: dismissing it ends the reminder.
-        let reminders = items.filter { Self.pullRequestID(ofReminder: $0.id) != nil }
+        let reminders = items.filter(\.isReminder)
         if !reminders.isEmpty {
             settleReminders(reminders)
-            items.removeAll { Self.pullRequestID(ofReminder: $0.id) != nil }
+            items.removeAll(where: \.isReminder)
             if items.isEmpty {
                 checked.removeAll()
                 toast(reminders.count == 1 ? "Reminder done · z to undo" : "\(reminders.count) reminders done · z to undo")
@@ -372,7 +384,7 @@ extension AppModel {
                 return
             }
         }
-        let batch = state.queue.enqueue(verb, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
+        let batch = state.queue.enqueue(verb, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
         state.count(byYou: items.count, now: .now)
         undoStack.append(.queued(batch))
         checked.removeAll()
@@ -383,21 +395,21 @@ extension AppModel {
 
     /// Hides the selection until a time. With `onlyIfQuiet` it comes back
     /// on any new activity, and at the time only if nothing happened.
-    func snooze(_ id: String? = nil, until: Date, onlyIfQuiet: Bool = false) {
+    func snooze(_ id: RowID? = nil, until: Date, onlyIfQuiet: Bool = false) {
         var items = targets(id)
         guard !items.isEmpty else { return }
         // A reminder row moves its reminder.
-        let reminders = items.filter { Self.pullRequestID(ofReminder: $0.id) != nil }
+        let reminders = items.filter(\.isReminder)
         if !reminders.isEmpty {
             settleReminders(reminders, until: until)
-            items.removeAll { Self.pullRequestID(ofReminder: $0.id) != nil }
+            items.removeAll(where: \.isReminder)
             if items.isEmpty {
                 toast("Reminding \(until.formatted(.relative(presentation: .named))) · z to undo")
                 recompute()
                 return
             }
         }
-        var previous: [String: Snooze?] = [:]
+        var previous: [ItemID: Snooze?] = [:]
         for item in items {
             previous[item.id] = state.snoozes[item.id]
             state.snoozes[item.id] = Snooze(until: until, activity: item.thread.updatedAt, onlyIfQuiet: onlyIfQuiet)
@@ -411,10 +423,10 @@ extension AppModel {
         recompute()
     }
 
-    func toggleLater(_ id: String? = nil) {
+    func toggleLater(_ id: RowID? = nil) {
         let items = targets(id)
         guard !items.isEmpty else { return }
-        var previous: [String: Date?] = [:]
+        var previous: [ItemID: Date?] = [:]
         let adding = items.contains { state.later[$0.id] == nil }
         for item in items {
             previous[item.id] = state.later[item.id]
@@ -428,9 +440,9 @@ extension AppModel {
 
     /// Opens the snooze picker. On the user's own pull request the reminder
     /// defaults to waiting for silence: a follow-up if no one answers.
-    func beginSnooze(_ id: String? = nil) {
-        if section == .myPullRequests {
-            beginReminder(id)
+    func beginSnooze(_ id: RowID? = nil) {
+        if case .pullRequest(let pullRequestID) = id ?? selectedID {
+            beginReminder(pullRequestID)
             return
         }
         snoozeTarget = .threads
@@ -528,7 +540,7 @@ extension AppModel {
         settingsChanged()
     }
 
-    func muteRepository(_ id: String? = nil) {
+    func muteRepository(_ id: RowID? = nil) {
         guard let item = targets(id).first else { return }
         state.settings.mutedRepositories.insert(item.thread.repository.fullName.lowercased())
         toast("Muted \(item.thread.repository.fullName)")
@@ -567,7 +579,7 @@ extension AppModel {
         overlay = .none
         let items = option.items.filter { $0.classification.split != .needsMe }
         guard !items.isEmpty else { return }
-        let batch = state.queue.enqueue(.done, items.map { .init(threadID: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.thread)?.nodeID) }, now: .now, grace: Self.grace)
+        let batch = state.queue.enqueue(.done, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
         state.cleared += items.map { ClearedEntry(batch: batch, thread: $0.thread, rule: nil, at: .now) }
         state.count(byYou: items.count, now: .now)
         undoStack.append(.queued(batch))
@@ -616,26 +628,27 @@ extension AppModel {
         let byRules = dismissals.filter { $0.rule != nil }.count
         state.count(byRules: -byRules, byYou: -(dismissals.count - byRules), now: .now)
         for action in removed where action.rule != nil {
-            state.ruleExemptions[action.threadID] = action.activity
+            state.ruleExemptions[action.item] = action.activity
         }
-        if let first = removed.first { selectedID = first.threadID }
+        if let first = removed.first { selectedID = .item(first.item) }
         toast(removed.count == 1 ? "Undone" : "Undone for \(removed.count) threads")
         recompute()
     }
 
     /// Lets a rule-cleared thread back in, for this activity.
     func restore(_ entry: ClearedEntry) {
-        let removed = state.queue.undo(batch: entry.batch).filter { $0.threadID == entry.threadID }
-        if case .rule? = state.dismissals[entry.threadID]?.cause { state.dismissals[entry.threadID] = nil }
-        state.ruleExemptions[entry.threadID] = threads[entry.threadID]?.updatedAt ?? .now
+        let removed = state.queue.undo(batch: entry.batch).filter { $0.item == entry.item }
+        if case .rule? = state.dismissals[entry.item]?.cause { state.dismissals[entry.item] = nil }
+        let latest = if case .thread(let id) = entry.item { threads[id]?.updatedAt } else { nil as Date? }
+        state.ruleExemptions[entry.item] = latest ?? .now
         state.cleared.removeAll { $0.id == entry.id }
-        toast(removed.isEmpty && state.dismissals[entry.threadID] != nil ? "Already done on GitHub" : "Restored \(entry.reference)")
+        toast(removed.isEmpty && state.dismissals[entry.item] != nil ? "Already done on GitHub" : "Restored \(entry.reference)")
         recompute()
     }
 
-    func copyLink(_ id: String? = nil) {
-        if section == .myPullRequests {
-            copyPullRequestLink(id)
+    func copyLink(_ id: RowID? = nil) {
+        if case .pullRequest(let pullRequestID) = id ?? selectedID {
+            copyPullRequestLink(pullRequestID)
             return
         }
         guard let item = targets(id).first else { return }

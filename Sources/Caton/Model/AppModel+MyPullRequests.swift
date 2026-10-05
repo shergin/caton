@@ -5,8 +5,6 @@ import CatonCore
 /// subject store shares with `MyPullRequestsView`, and the reminders set on
 /// them. A reminder that comes due with no answer joins Needs me.
 extension AppModel {
-    static let followUpPrefix = "followup:"
-
     /// The pull requests in the order the view shows them, for the keyboard.
     var myPullRequestNodes: [MyPullRequests.Node] {
         guard let handle = subjects?.myPullRequests, case .ready(let data) = handle.phase else { return [] }
@@ -27,14 +25,20 @@ extension AppModel {
         return state.followUps[id]
     }
 
+    /// The pull request the selection is on in My PRs.
+    var selectedPullRequestID: String? {
+        if case .pullRequest(let id) = selectedID { return id }
+        return nil
+    }
+
     func openPullRequest(_ id: String? = nil) {
-        guard let id = id ?? selectedID, let url = node(id).flatMap({ URL(string: $0.url) }) else { return }
-        select(id)
+        guard let id = id ?? selectedPullRequestID, let url = node(id).flatMap({ URL(string: $0.url) }) else { return }
+        select(.pullRequest(id))
         openURL(url)
     }
 
     func copyPullRequestLink(_ id: String? = nil) {
-        guard let id = id ?? selectedID, let node = node(id) else { return }
+        guard let id = id ?? selectedPullRequestID, let node = node(id) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(node.url, forType: .string)
         toast("Copied \(node.myPullRequestRow.repository.nameWithOwner)#\(node.myPullRequestRow.number)")
@@ -42,8 +46,8 @@ extension AppModel {
 
     /// Opens the picker for a reminder on a pull request.
     func beginReminder(_ id: String? = nil) {
-        guard let id = id ?? selectedID, node(id) != nil else { return }
-        select(id)
+        guard let id = id ?? selectedPullRequestID, node(id) != nil else { return }
+        select(.pullRequest(id))
         snoozeTarget = .pullRequest(id)
         overlay = .snooze
     }
@@ -115,7 +119,7 @@ extension AppModel {
                 state.followUps[id] = nil
             case .due:
                 let thread = NotificationThread(
-                    id: Self.followUpPrefix + id,
+                    id: id,
                     repository: followUp.repository,
                     kind: .pullRequest,
                     number: followUp.number,
@@ -130,22 +134,17 @@ extension AppModel {
                     badge: .followUp,
                     because: "You asked to be reminded if nobody had reviewed or commented by \(followUp.until.formatted(date: .abbreviated, time: .shortened)), and nobody has."
                 )
-                items.append(InboxItem(thread: thread, classification: classification, isUnread: true, resurfacing: .noActivity))
+                items.append(InboxItem(id: .followUp(id), thread: thread, classification: classification, isUnread: true, resurfacing: .noActivity))
             }
         }
         return items
-    }
-
-    /// The pull request a reminder row stands for.
-    static func pullRequestID(ofReminder threadID: String) -> String? {
-        threadID.hasPrefix(followUpPrefix) ? String(threadID.dropFirst(followUpPrefix.count)) : nil
     }
 
     /// Done on a reminder row ends the reminder; snoozing it moves it.
     func settleReminders(_ items: [InboxItem], until: Date? = nil) {
         var previous: [String: FollowUp?] = [:]
         for item in items {
-            guard let id = Self.pullRequestID(ofReminder: item.id), let followUp = state.followUps[id] else { continue }
+            guard case .followUp(let id) = item.id, let followUp = state.followUps[id] else { continue }
             previous[id] = followUp
             if let until {
                 state.followUps[id]?.until = until
@@ -159,8 +158,8 @@ extension AppModel {
     }
 
     /// The glyph for a reminder row: the inbox's own fragment, from My PRs.
-    func reminderLenses(_ threadID: String) -> SubjectStore.Lenses? {
-        guard let id = Self.pullRequestID(ofReminder: threadID), let node = node(id) else { return nil }
+    func reminderLenses(_ item: ItemID) -> SubjectStore.Lenses? {
+        guard case .followUp(let id) = item, let node = node(id) else { return nil }
         return SubjectStore.Lenses(pullRequestIcon: node.myPullRequestRow.pullRequestIcon)
     }
 }

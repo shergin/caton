@@ -34,7 +34,7 @@ public struct AlertDecision: Equatable, Sendable {
     /// How many more arrived than the cap allowed; shown as one summary banner.
     public var overflow = 0
     /// Activity now accounted for, alerted or deliberately not.
-    public var alerted: [String: Date] = [:]
+    public var alerted: [ItemID: Date] = [:]
 }
 
 /// Decides banners: only Needs me, only new activity, at most a few per
@@ -46,7 +46,7 @@ public enum AlertPolicy {
 
     public static func decide(
         needsMe: [InboxItem],
-        alerted: [String: Date],
+        alerted: [ItemID: Date],
         isPanelVisible: Bool,
         quietHours: QuietHours,
         isEnabled: Bool,

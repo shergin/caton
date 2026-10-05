@@ -76,13 +76,13 @@ struct MyPullRequestList: View {
             standing: node.pullRequestStanding,
             followUp: model.followUp(for: node.id),
             pendingNote: model.pendingWriteNote(for: node.id),
-            isSelected: model.selectedID == node.id,
+            isSelected: model.selectedID == .pullRequest(node.id),
             onOpen: { model.openPullRequest(node.id) },
             onRemind: { model.beginReminder(node.id) },
             onNudge: { model.nudge(node.id) },
             onReady: { model.markReadyForReview(node.id) }
         )
-        .id(node.id)
+        .id(RowID.pullRequest(node.id))
     }
 
     var body: some View {

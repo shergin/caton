@@ -5,14 +5,14 @@ import Testing
 struct ActionQueueTests {
     @Test func an_action_waits_out_its_grace_window() {
         var queue = ActionQueue()
-        queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 5)
+        queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 5)
         #expect(queue.takeDue(now: reference.addingTimeInterval(4)) == nil)
-        #expect(queue.takeDue(now: reference.addingTimeInterval(5))?.threadID == "1")
+        #expect(queue.takeDue(now: reference.addingTimeInterval(5))?.item == "1")
     }
 
     @Test func undo_takes_back_the_whole_batch_while_it_is_queued() {
         var queue = ActionQueue()
-        let batch = queue.enqueue(.done, [.init(threadID: "1", activity: reference), .init(threadID: "2", activity: reference)], now: reference, grace: 5)
+        let batch = queue.enqueue(.done, [.init(item: "1", activity: reference), .init(item: "2", activity: reference)], now: reference, grace: 5)
         #expect(queue.lastUndoableBatch == batch)
         #expect(queue.undo(batch: batch).count == 2)
         #expect(queue.isEmpty)
@@ -20,7 +20,7 @@ struct ActionQueueTests {
 
     @Test func undo_cannot_take_back_an_action_in_flight() {
         var queue = ActionQueue()
-        let batch = queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 0)
+        let batch = queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 0)
         _ = queue.takeDue(now: reference)
         #expect(queue.undo(batch: batch).isEmpty)
         #expect(queue.lastUndoableBatch == nil)
@@ -28,21 +28,21 @@ struct ActionQueueTests {
 
     @Test func a_pending_dismissal_hides_only_the_activity_it_covers() {
         var queue = ActionQueue()
-        queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 5)
-        #expect(queue.hides(threadID: "1", activity: reference))
-        #expect(!queue.hides(threadID: "1", activity: reference.addingTimeInterval(1)))
+        queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 5)
+        #expect(queue.hides("1", activity: reference))
+        #expect(!queue.hides("1", activity: reference.addingTimeInterval(1)))
     }
 
     @Test func marking_read_does_not_cancel_a_queued_done() {
         var queue = ActionQueue()
-        queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 5)
-        queue.enqueue(.markRead, [.init(threadID: "1", activity: reference)], now: reference, grace: 0)
+        queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 5)
+        queue.enqueue(.markRead, [.init(item: "1", activity: reference)], now: reference, grace: 0)
         #expect(queue.actions.count == 2)
     }
 
     @Test func a_retryable_failure_is_queued_again_until_attempts_run_out() {
         var queue = ActionQueue()
-        queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 0)
+        queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 0)
         var now = reference
         for _ in 1..<ActionQueue.maximumAttempts {
             let action = queue.takeDue(now: now)!
@@ -50,13 +50,13 @@ struct ActionQueueTests {
             now = now.addingTimeInterval(60)
         }
         let last = queue.takeDue(now: now)!
-        #expect(queue.fail(last.id, retryable: true, now: now)?.threadID == "1")
+        #expect(queue.fail(last.id, retryable: true, now: now)?.item == "1")
         #expect(queue.isEmpty)
     }
 
     @Test func a_relaunch_queues_in_flight_actions_again() {
         var queue = ActionQueue()
-        queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 0)
+        queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 0)
         _ = queue.takeDue(now: reference)
         queue.resumeAfterLaunch()
         #expect(queue.takeDue(now: reference) != nil)
@@ -65,7 +65,7 @@ struct ActionQueueTests {
 
 struct InboxProjectionTests {
     func project(_ threads: [NotificationThread], facts: [String: SubjectFacts] = [:], state: LocalState = LocalState(), now: Date = reference) -> InboxSnapshot {
-        InboxProjection.project(threads: threads, facts: { facts[$0.id] }, state: state, now: now)
+        InboxProjection.project(threads: threads, facts: { facts[$0.key] }, state: state, now: now)
     }
 
     @Test func threads_land_in_their_splits_newest_first() {
@@ -114,7 +114,7 @@ struct InboxProjectionTests {
 
     @Test func a_queued_done_hides_the_thread_at_once() {
         var state = LocalState()
-        state.queue.enqueue(.done, [.init(threadID: "1", activity: reference)], now: reference, grace: 5)
+        state.queue.enqueue(.done, [.init(item: "1", activity: reference)], now: reference, grace: 5)
         #expect(project([makeThread(id: "1", reason: .mention)], state: state).count(.needsMe) == 0)
     }
 
@@ -189,6 +189,22 @@ struct LocalStateTests {
         #expect(state.readMarks.count == 1)
         #expect(state.alerted.isEmpty)
         #expect(state.settings.enabledRules == [.drafts])
+    }
+
+    @Test func typed_ids_save_and_load_in_the_format_strings_had() throws {
+        var state = LocalState()
+        state.dismissals[.thread("123")] = Dismissal(cause: .done, activity: reference, at: reference)
+        state.dismissals[.reviewRequest("PR_1")] = Dismissal(cause: .done, activity: reference, at: reference)
+        state.queue.enqueue(.done, [.init(item: .reviewRequest("PR_1"), activity: reference)], now: reference, grace: 5)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        let json = String(decoding: try encoder.encode(state), as: UTF8.self)
+        #expect(json.contains(#""review:PR_1""#) && json.contains(#""123""#) && json.contains(#""threadID":"review:PR_1""#))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let decoded = try decoder.decode(LocalState.self, from: Data(json.utf8))
+        #expect(Set(decoded.dismissals.keys) == [.thread("123"), .reviewRequest("PR_1")])
+        #expect(decoded.queue.actions.first?.item == .reviewRequest("PR_1"))
     }
 
     @Test func a_snooze_saved_before_follow_ups_decodes_as_an_ordinary_snooze() throws {

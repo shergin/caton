@@ -48,23 +48,26 @@ public enum Resurfacing: Hashable, Sendable {
 
 /// One row of the inbox.
 public struct InboxItem: Identifiable, Hashable, Sendable {
+    public var id: ItemID
+    /// What the row shows. For a review request or a reminder, the pull
+    /// request in a thread's shape; its `id` is then the node id.
     public var thread: NotificationThread
     public var classification: Classification
     public var isUnread: Bool
     public var resurfacing: Resurfacing?
 
-    public init(thread: NotificationThread, classification: Classification, isUnread: Bool, resurfacing: Resurfacing? = nil) {
+    public init(id: ItemID? = nil, thread: NotificationThread, classification: Classification, isUnread: Bool, resurfacing: Resurfacing? = nil) {
+        self.id = id ?? .thread(thread.id)
         self.thread = thread
         self.classification = classification
         self.isUnread = isUnread
         self.resurfacing = resurfacing
     }
-
-    public var id: String { thread.id }
 }
 
 /// A thread a rule wants cleared.
 public struct AutoClear: Hashable, Sendable {
+    public let id: ItemID
     public let thread: NotificationThread
     public let rule: Rule
     public let subjectNodeID: String?
@@ -78,7 +81,7 @@ public struct InboxSnapshot: Equatable, Sendable {
     /// Threads rules clear on this pass; the app enqueues them.
     public var autoClears: [AutoClear] = []
     /// Snoozes that ended on this pass, with why; the app forgets them.
-    public var wokenSnoozes: [String: Resurfacing] = [:]
+    public var wokenSnoozes: [ItemID: Resurfacing] = [:]
 
     public init() {}
 
@@ -90,49 +93,58 @@ public struct InboxSnapshot: Equatable, Sendable {
 /// Computes the inbox from the feed, the subjects' facts and local state.
 /// Pure, so every rule about what shows where is testable without a network.
 public enum InboxProjection {
-    /// - Parameter reminders: follow-ups that came due, already classified:
-    ///   they join Needs me as they are.
+    /// - Parameters:
+    ///   - threads: the feed's notification threads.
+    ///   - reviewRequests: open pull requests that request the viewer, from
+    ///     search, in a thread's shape with the node id as `id`; those the
+    ///     feed already has a thread for are left out.
+    ///   - reminders: follow-ups that came due, already classified: they
+    ///     join Needs me as they are.
     public static func project(
         threads: some Sequence<NotificationThread>,
-        facts: (NotificationThread) -> SubjectFacts?,
-        state: LocalState,
+        reviewRequests: [NotificationThread] = [],
         reminders: [InboxItem] = [],
+        facts: (ItemID) -> SubjectFacts?,
+        state: LocalState,
         now: Date
     ) -> InboxSnapshot {
         var snapshot = InboxSnapshot()
         snapshot.splits[.needsMe] = reminders
-        for thread in threads {
-            if state.queue.hides(threadID: thread.id, activity: thread.updatedAt) { continue }
+        var entries = threads.map { (ItemID.thread($0.id), $0) }
+        let known = Set(entries.filter { $0.1.kind == .pullRequest }.map(\.1.reference))
+        entries += reviewRequests.filter { !known.contains($0.reference) }.map { (ItemID.reviewRequest($0.id), $0) }
+        for (id, thread) in entries {
+            if state.queue.hides(id, activity: thread.updatedAt) { continue }
 
-            let subjectFacts = facts(thread)
+            let subjectFacts = facts(id)
             let classification = Classifier.classify(thread, facts: subjectFacts, settings: state.settings)
 
             var resurfacing: Resurfacing?
-            if let dismissal = state.dismissals[thread.id] {
+            if let dismissal = state.dismissals[id] {
                 if thread.updatedAt <= dismissal.activity { continue }
                 let unsubscribed = dismissal.cause == .unsubscribe || dismissal.cause == .ignore
                 resurfacing = .newActivity(since: dismissal.activity, badge: classification.badge, facts: subjectFacts, afterUnsubscribe: unsubscribed)
             }
 
             if let rule = classification.clearedBy {
-                let exempt = state.ruleExemptions[thread.id].map { thread.updatedAt <= $0 } ?? false
+                let exempt = state.ruleExemptions[id].map { thread.updatedAt <= $0 } ?? false
                 if !exempt {
-                    snapshot.autoClears.append(AutoClear(thread: thread, rule: rule, subjectNodeID: subjectFacts?.nodeID))
+                    snapshot.autoClears.append(AutoClear(id: id, thread: thread, rule: rule, subjectNodeID: subjectFacts?.nodeID))
                     continue
                 }
             }
 
-            let readMark = state.readMarks[thread.id]
+            let readMark = state.readMarks[id]
             let isUnread = thread.isUnread && !(readMark.map { thread.updatedAt <= $0 } ?? false)
-            var item = InboxItem(thread: thread, classification: classification, isUnread: isUnread, resurfacing: resurfacing)
+            var item = InboxItem(id: id, thread: thread, classification: classification, isUnread: isUnread, resurfacing: resurfacing)
 
-            if let snooze = state.snoozes[thread.id] {
+            if let snooze = state.snoozes[id] {
                 if let woke = snooze.wake(thread: thread, split: classification.split, now: now) {
                     let why: Resurfacing = switch woke {
                     case .time: snooze.onlyIfQuiet ? .noActivity : .snoozeEnded
                     case .activity: .newActivity(since: snooze.activity, badge: classification.badge, facts: subjectFacts)
                     }
-                    snapshot.wokenSnoozes[thread.id] = why
+                    snapshot.wokenSnoozes[id] = why
                     item.resurfacing = why
                 } else {
                     snapshot.snoozed.append(item)
@@ -140,7 +152,7 @@ public enum InboxProjection {
                 }
             }
 
-            if state.later[thread.id] != nil {
+            if state.later[id] != nil {
                 snapshot.later.append(item)
                 continue
             }

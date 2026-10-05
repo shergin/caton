@@ -34,9 +34,12 @@ extension AppModel {
     /// The pull request a write applies to: the selection in My PRs, or the
     /// pull request behind a reminder row.
     private func writeTarget(_ id: String?) -> String? {
-        let id = id ?? selectedID
-        if section == .myPullRequests { return id }
-        return id.flatMap(Self.pullRequestID(ofReminder:))
+        if let id { return id }
+        switch selectedID {
+        case .pullRequest(let id): return id
+        case .item(.followUp(let id)): return id
+        default: return nil
+        }
     }
 
     func pendingWriteNote(for pullRequestID: String) -> String? {
@@ -65,7 +68,7 @@ extension AppModel {
             toast("Nobody to ask again: request a reviewer on GitHub")
             return
         }
-        let reminders = targets(id).filter { Self.pullRequestID(ofReminder: $0.id) == pullRequestID }
+        let reminders = targets().filter { $0.id == .followUp(pullRequestID) }
         if !reminders.isEmpty { settleReminders(reminders) }
         schedule(.nudge(nudge), on: pullRequestID, reference: reference(of: node))
         toast("Asking \(nudge.summary) again · z to undo")
