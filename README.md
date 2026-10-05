@@ -28,10 +28,11 @@ The product thinking is in [PRD.md](PRD.md).
   and a relaunch classifies the inbox from Baton's on-disk image before the
   network answers.
 - **My PRs** (`g p`) is the part to read for Baton: a screen with no REST
-  behind it. Its query, a paged connection, its rows and the fragment that
-  says where a pull request stands are all in
-  [`MyPullRequestsView.swift`](Sources/Caton/Views/MyPullRequestsView.swift),
-  beside the views that read them. The app model asks for the same query by
+  behind it. Its query and paged connection are in
+  [`MyPullRequestsView.swift`](Sources/Caton/Views/Panel/MyPullRequestsView.swift),
+  and its row and the fragment that says where a pull request stands in
+  [`PullRequestRow.swift`](Sources/Caton/Views/Rows/PullRequestRow.swift),
+  each beside the view that reads it. The app model asks for the same query by
   value and so shares the view's handle, rows reuse the inbox's own
   fragments, and the list renders from the image at launch. Its two writes,
   nudge and ready for review, are mutations in
