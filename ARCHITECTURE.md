@@ -75,8 +75,9 @@ and serves the practice inbox and the tests.
   seconds and merges the result into the threads. It syncs the subject
   store, then `recompute()` projects a new snapshot and saves it.
 - **Changes** (`Session+Changes.swift`): each verb records local state,
-  queues its action when it should reach GitHub, and returns an `Undo`
-  that takes it back.
+  queues its action when it should reach GitHub, and adds its undo to the
+  session's history. Practice has its own history, so the account's is
+  still there after you leave practice.
 - **Dispatch** (`Session+Dispatch.swift`): the dispatcher sends due actions
   one at a time, paced as GitHub asks. Only `.thread` items exist on
   GitHub; a dry run, or a session connected to nothing, sends nothing.
@@ -113,12 +114,11 @@ changes into one layout.
 
 ### AppModel: the root
 
-`AppModel` owns `Accounts`, the `Panel`, the practice session and the undo
-stack. It points the panel at whichever session shows, and it connects
+`AppModel` owns `Accounts`, the `Panel` and the practice session. It points the panel at whichever session shows, and it connects
 session events to the panel and to alerts. Its commands live in
 `AppModel+Commands.swift` and `AppModel+PullRequests.swift`. Each command
-finds its rows in the panel, asks the session to change them, keeps the
-undo, and says what happened in a toast. A command handles only its own
+finds its rows in the panel, asks the session to change them, and says
+what happened in a toast. A command handles only its own
 kind of row; which command a key runs is the command table's call.
 
 ## Keys: one table

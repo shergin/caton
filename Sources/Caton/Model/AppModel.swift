@@ -69,8 +69,6 @@ final class AppModel {
 
     // MARK: Unobserved state
 
-    /// What `z` takes back, newest last; it belongs to the session showing.
-    @ObservationIgnored var undoStack: [Session.Undo] = []
     /// Opens a page; the browser by default.
     @ObservationIgnored let openURL: @MainActor (URL) -> Void
     /// No change reaches GitHub; for development against a real account.
@@ -101,7 +99,6 @@ final class AppModel {
 
     var isPractice: Bool { practice != nil }
 
-
     /// Baton's environment for the inbox, injected into views that own their
     /// queries.
     var graph: Baton.Environment? { inbox?.graph }
@@ -123,9 +120,8 @@ final class AppModel {
         showInbox()
     }
 
-    /// Points the panel at the session that shows; undo starts over with it.
+    /// Points the panel at the session that shows.
     private func showInbox() {
-        undoStack.removeAll()
         panel.session = inbox
     }
 

@@ -50,14 +50,12 @@ extension AppModel {
     /// Reminds about a pull request at `until` unless someone reviews or
     /// comments first.
     func remind(_ id: String, until: Date) {
-        guard let undo = inbox?.remind(id, until: until) else { return }
-        undoStack.append(undo)
+        guard inbox?.remind(id, until: until) == true else { return }
         panel.toast("Reminding \(until.formatted(.relative(presentation: .named))) if nobody answers · z to undo")
     }
 
     func clearReminder(_ id: String) {
-        guard let undo = inbox?.clearReminder(id) else { return }
-        undoStack.append(undo)
+        guard inbox?.clearReminder(id) == true else { return }
         panel.toast("Reminder removed · z to undo")
     }
 
@@ -80,12 +78,11 @@ extension AppModel {
             panel.toast("Nobody to ask again: request a reviewer on GitHub")
         case .ask(let nudge, let reference):
             let reminders = panel.targets().filter { $0.id == .followUp(pullRequestID) }
-            if let undo = inbox.settleReminders(reminders) { undoStack.append(undo) }
-            guard let undo = inbox.schedule(.nudge(nudge), on: pullRequestID, reference: reference) else {
+            inbox.settleReminders(reminders)
+            guard inbox.schedule(.nudge(nudge), on: pullRequestID, reference: reference) else {
                 panel.toast("Dry run: would ask \(nudge.summary) again on \(reference)")
                 return
             }
-            undoStack.append(undo)
             panel.toast("Asking \(nudge.summary) again · z to undo")
         }
     }
@@ -97,11 +94,10 @@ extension AppModel {
             panel.toast("Already ready for review")
             return
         }
-        guard let undo = inbox.schedule(.readyForReview, on: pullRequestID, reference: reference) else {
+        guard inbox.schedule(.readyForReview, on: pullRequestID, reference: reference) else {
             panel.toast("Dry run: would mark \(reference) ready for review")
             return
         }
-        undoStack.append(undo)
         panel.toast("Marking \(reference) ready for review · z to undo")
     }
 }

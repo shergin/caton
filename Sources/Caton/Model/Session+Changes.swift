@@ -2,8 +2,10 @@ import CatonCore
 import Foundation
 
 /// Changes to the inbox: verbs on its rows, rules and lists, saved searches,
-/// and the undo each change can be taken back by. Every change that reaches
-/// GitHub goes through the action queue and its grace window.
+/// and the history `z` takes them back from. Each change the user makes
+/// records its own undo, so a session's history is its own: practice keeps
+/// its own, and the account's is there again after. Every change that
+/// reaches GitHub goes through the action queue and its grace window.
 extension Session {
     /// One step undo can take back.
     enum Undo {
@@ -36,52 +38,63 @@ extension Session {
 
     /// Done, unsubscribe or ignore, after the grace window. A review request
     /// is dismissed here alone; reminders are settled, not dismissed.
-    func dismiss(_ verb: Verb, _ items: [InboxItem]) -> Undo {
+    func dismiss(_ verb: Verb, _ items: [InboxItem]) {
         let batch = state.queue.enqueue(verb, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
         state.count(byYou: items.count, now: .now)
+        history.append(.queued(batch))
         recompute()
         wakeDispatcher()
-        return .queued(batch)
     }
 
     /// Hides rows until a time. With `onlyIfQuiet` they come back on any new
     /// activity, and at the time only if nothing happened.
-    func snooze(_ items: [InboxItem], until: Date, onlyIfQuiet: Bool) -> Undo {
+    func snooze(_ items: [InboxItem], until: Date, onlyIfQuiet: Bool) {
         var previous: [ItemID: Snooze?] = [:]
         for item in items {
             previous[item.id] = state.snoozes[item.id]
             state.snoozes[item.id] = Snooze(until: until, activity: item.thread.updatedAt, onlyIfQuiet: onlyIfQuiet)
             wokenSnoozes[item.id] = nil
         }
+        history.append(.snoozed(previous))
         recompute()
-        return .snoozed(previous)
     }
 
     /// Saves rows for later, or takes them back out when all already are.
-    func toggleLater(_ items: [InboxItem]) -> (undo: Undo, added: Bool) {
+    /// Returns whether it saved them.
+    @discardableResult
+    func toggleLater(_ items: [InboxItem]) -> Bool {
         var previous: [ItemID: Date?] = [:]
         let adding = items.contains { state.later[$0.id] == nil }
         for item in items {
             previous[item.id] = state.later[item.id]
             state.later[item.id] = adding ? .now : nil
         }
+        history.append(.later(previous))
         recompute()
-        return (.later(previous), adding)
+        return adding
     }
 
     /// Done for every row of a bulk clear, as one batch logged in Cleared.
-    func clear(_ items: [InboxItem]) -> Undo {
+    func clear(_ items: [InboxItem]) {
         let batch = state.queue.enqueue(.done, items.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: facts(for: $0.id)?.nodeID) }, now: .now, grace: Self.grace)
         state.cleared += items.map { ClearedEntry(batch: batch, thread: $0.thread, rule: nil, at: .now) }
         state.count(byYou: items.count, now: .now)
+        history.append(.queued(batch))
         recompute()
         wakeDispatcher()
-        return .queued(batch)
     }
 
     // MARK: Undo
 
-    func undo(_ entry: Undo) -> Undone {
+    /// Takes back the latest change, or, with no history (it does not
+    /// outlive a relaunch; the queue does), the latest batch still waiting.
+    /// Nil when there is nothing to take back.
+    func undo() -> Undone? {
+        if let entry = history.popLast() { return undo(entry) }
+        return state.queue.lastUndoableBatch.map(undoQueued)
+    }
+
+    private func undo(_ entry: Undo) -> Undone {
         switch entry {
         case .queued(let batch):
             return undoQueued(batch)
@@ -101,12 +114,6 @@ extension Session {
             guard let kind = cancelWrite(pullRequestID) else { return Undone(message: "Already sent to GitHub") }
             return Undone(message: kind == .readyForReview ? "Still a draft" : "Nudge cancelled")
         }
-    }
-
-    /// Takes back the latest batch still waiting, when the undo stack is
-    /// empty (it does not outlive a relaunch; the queue does).
-    func undoLatestQueued() -> Undone? {
-        state.queue.lastUndoableBatch.map(undoQueued)
     }
 
     private func undoQueued(_ batch: UUID) -> Undone {

@@ -62,6 +62,8 @@ final class Session {
     // MARK: Unobserved state
 
     @ObservationIgnored var threads: [String: NotificationThread] = [:]
+    /// The user's changes, newest last, for undo.
+    @ObservationIgnored var history: [Undo] = []
     /// Snoozes that ended this session, and why, so the note outlives the snooze.
     @ObservationIgnored var wokenSnoozes: [ItemID: Resurfacing] = [:]
     @ObservationIgnored private let persistence: StatePersistence?

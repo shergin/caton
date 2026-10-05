@@ -107,6 +107,18 @@ struct AppModelTests {
         #expect(model.panel.checked.isEmpty)
     }
 
+    @Test func practice_keeps_its_own_undo_and_the_account_gets_its_back() {
+        loadThree()
+        model.done()
+        model.enterPractice()
+        model.panel.selectFirst()
+        model.done()
+        model.exitPractice()
+        model.undo()
+        #expect(model.panel.items.map(\.id.key) == ["1", "2", "3"])
+        #expect(session.state.queue.isEmpty)
+    }
+
     @Test func snooze_hides_until_undone() {
         loadThree()
         model.snooze(until: .now.addingTimeInterval(3600))

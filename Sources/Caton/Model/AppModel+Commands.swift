@@ -10,8 +10,8 @@ extension InboxItem {
 }
 
 /// The verbs views and keys run on the inbox's rows. Each finds its rows in
-/// the panel, asks the session to change them, keeps the undo and says what
-/// happened. Which verb a key runs on which kind of row is the command
+/// the panel, asks the session to change them (the session keeps the undo)
+/// and says what happened. Which verb a key runs on which kind of row is the command
 /// table's call (`Command.all`), so a verb here only handles its own kind.
 extension AppModel {
     // MARK: Verbs
@@ -48,12 +48,12 @@ extension AppModel {
         panel.clearChecked()
         let reminders = items.filter(\.isReminder)
         let rows = items.filter { !$0.isReminder }
-        if let undo = inbox.settleReminders(reminders) { undoStack.append(undo) }
+        inbox.settleReminders(reminders)
         guard !rows.isEmpty else {
             panel.toast(reminders.count == 1 ? "Reminder done · z to undo" : "\(reminders.count) reminders done · z to undo")
             return
         }
-        undoStack.append(inbox.dismiss(verb, rows))
+        inbox.dismiss(verb, rows)
         panel.toast(rows.count == 1 ? "\(verbTitle) \(rows[0].thread.reference) · z to undo" : "\(verbTitle) \(rows.count) threads · z to undo")
     }
 
@@ -68,12 +68,12 @@ extension AppModel {
         let when = until.formatted(.relative(presentation: .named))
         let reminders = items.filter(\.isReminder)
         let rows = items.filter { !$0.isReminder }
-        if let undo = inbox.settleReminders(reminders, until: until) { undoStack.append(undo) }
+        inbox.settleReminders(reminders, until: until)
         guard !rows.isEmpty else {
             panel.toast("Reminding \(when) · z to undo")
             return
         }
-        undoStack.append(inbox.snooze(rows, until: until, onlyIfQuiet: onlyIfQuiet))
+        inbox.snooze(rows, until: until, onlyIfQuiet: onlyIfQuiet)
         let what = rows.count == 1 ? rows[0].thread.reference : "\(rows.count) threads"
         panel.toast(onlyIfQuiet ? "Reminding about \(what) \(when) if nothing happens · z to undo" : "Snoozed \(what) until \(when) · z to undo")
     }
@@ -82,8 +82,7 @@ extension AppModel {
         guard let inbox else { return }
         let items = panel.targets(id)
         guard !items.isEmpty else { return }
-        let (undo, added) = inbox.toggleLater(items)
-        undoStack.append(undo)
+        let added = inbox.toggleLater(items)
         panel.clearChecked()
         panel.toast(added ? "Saved for later · z to undo" : "Removed from Later")
     }
@@ -166,21 +165,16 @@ extension AppModel {
         panel.overlay = .none
         let items = option.items.filter { $0.classification.split != .needsMe }
         guard let inbox, !items.isEmpty else { return }
-        undoStack.append(inbox.clear(items))
+        inbox.clear(items)
         panel.clearChecked()
         panel.toast("Cleared \(items.count) · z to undo")
     }
 
     // MARK: Undo
 
+    /// Takes back the shown session's latest change.
     func undo() {
-        guard let inbox else { return }
-        let undone: Session.Undone
-        if let entry = undoStack.popLast() {
-            undone = inbox.undo(entry)
-        } else if let latest = inbox.undoLatestQueued() {
-            undone = latest
-        } else {
+        guard let undone = inbox?.undo() else {
             panel.toast("Nothing to undo")
             return
         }

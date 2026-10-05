@@ -27,12 +27,13 @@ extension Session {
     func followUp(for id: String) -> FollowUp? { state.followUps[id] }
 
     /// Reminds about a pull request at `until` unless someone reviews or
-    /// comments first.
-    func remind(_ id: String, until: Date) -> Undo? {
-        guard let node = myPullRequestNode(id), let url = URL(string: node.url) else { return nil }
+    /// comments first. False when the pull request is not loaded.
+    @discardableResult
+    func remind(_ id: String, until: Date) -> Bool {
+        guard let node = myPullRequestNode(id), let url = URL(string: node.url) else { return false }
         let row = node.myPullRequestRow
         let parts = row.repository.nameWithOwner.split(separator: "/").map(String.init)
-        guard parts.count == 2 else { return nil }
+        guard parts.count == 2 else { return false }
         let previous = state.followUps[id]
         state.followUps[id] = FollowUp(
             until: until,
@@ -42,18 +43,22 @@ extension Session {
             title: row.title,
             url: url
         )
+        history.append(.followUps([id: previous]))
         recompute()
-        return .followUps([id: previous])
+        return true
     }
 
-    func clearReminder(_ id: String) -> Undo? {
-        guard let previous = state.followUps.removeValue(forKey: id) else { return nil }
+    /// Removes a reminder; false when there was none.
+    @discardableResult
+    func clearReminder(_ id: String) -> Bool {
+        guard let previous = state.followUps.removeValue(forKey: id) else { return false }
+        history.append(.followUps([id: previous]))
         recompute()
-        return .followUps([id: previous])
+        return true
     }
 
     /// Done on a reminder row ends the reminder; snoozing it moves it.
-    func settleReminders(_ items: [InboxItem], until: Date? = nil) -> Undo? {
+    func settleReminders(_ items: [InboxItem], until: Date? = nil) {
         var previous: [String: FollowUp?] = [:]
         for item in items {
             guard case .followUp(let id) = item.id, let followUp = state.followUps[id] else { continue }
@@ -64,9 +69,9 @@ extension Session {
                 state.followUps[id] = nil
             }
         }
-        guard !previous.isEmpty else { return nil }
+        guard !previous.isEmpty else { return }
+        history.append(.followUps(previous))
         recompute()
-        return .followUps(previous)
     }
 
     /// Reminders that came due unanswered, as Needs me rows. A reminder whose
@@ -170,10 +175,10 @@ extension Session {
         myPullRequestNode(id).map(Self.reference(of:))
     }
 
-    /// Holds a write for the undo window, then sends it. Returns nil when the
-    /// session sends nothing (a dry run, or connected to nothing).
-    func schedule(_ kind: PendingWrite.Kind, on pullRequestID: String, reference: String) -> Undo? {
-        guard !dryRun, graph != nil else { return nil }
+    /// Holds a write for the undo window, then sends it. Returns false when
+    /// the session sends nothing (a dry run, or connected to nothing).
+    func schedule(_ kind: PendingWrite.Kind, on pullRequestID: String, reference: String) -> Bool {
+        guard !dryRun, graph != nil else { return false }
         pendingWrites[pullRequestID]?.task.cancel()
         let task = Task { [weak self] in
             try? await Task.sleep(for: self?.writeGrace ?? .seconds(Session.grace))
@@ -182,7 +187,8 @@ extension Session {
             await send(kind, to: pullRequestID, reference: reference)
         }
         pendingWrites[pullRequestID] = PendingWrite(kind: kind, reference: reference, task: task)
-        return .pullRequestWrite(pullRequestID)
+        history.append(.pullRequestWrite(pullRequestID))
+        return true
     }
 
     /// Cancels a write still in its undo window, and says what it was.
