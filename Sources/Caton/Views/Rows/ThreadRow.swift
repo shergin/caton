@@ -135,7 +135,7 @@ struct ThreadRow: View {
         } else if let fallback {
             HStack(spacing: 4) {
                 if fallback.state == .open, let checks = fallback.checks {
-                    ChecksGlyph(state: checks == .success ? "SUCCESS" : checks == .failure ? "FAILURE" : "PENDING")
+                    ChecksGlyph(state: checks == .success ? .SUCCESS : checks == .failure ? .FAILURE : .PENDING)
                 }
                 if let author = fallback.author {
                     Avatar(url: nil, login: author.login, kind: item.classification.actorKind)

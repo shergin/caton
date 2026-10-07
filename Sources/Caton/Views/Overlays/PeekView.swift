@@ -42,7 +42,7 @@ extension PeekView {
 /// the network fills in the rest.
 struct PeekPullRequest: View {
     @Query("""
-        query PeekPullRequestQuery($owner: String!, $name: String!, $number: Int!) {
+        query PeekPullRequestQuery($owner: String!, $name: String!, $number: Int!) @cacheExpiration(seconds: 60) {
           repository(owner: $owner, name: $name) {
             pullRequest(number: $number) {
               title
@@ -71,9 +71,10 @@ struct PeekPullRequest: View {
             if let pullRequest = data.repository?.pullRequest {
                 VStack(alignment: .leading, spacing: 8) {
                     PeekHeader(title: pullRequest.title, author: pullRequest.author?.login)
+                    RefreshNotice(fetch: peek.fetch) { peek.retry() }
                     PeekBody(text: pullRequest.bodyText)
                     if let reviews = pullRequest.latestReviews?.nodes, !reviews.isEmpty {
-                        Text(reviews.map { "\($0.author?.login ?? "ghost") \($0.state.lowercased().replacingOccurrences(of: "_", with: " "))" }.joined(separator: " · "))
+                        Text(reviews.map { "\($0.author?.login ?? "ghost") \($0.state.scalarText.lowercased().replacingOccurrences(of: "_", with: " "))" }.joined(separator: " · "))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -91,7 +92,7 @@ struct PeekPullRequest: View {
 
 struct PeekIssue: View {
     @Query("""
-        query PeekIssueQuery($owner: String!, $name: String!, $number: Int!) {
+        query PeekIssueQuery($owner: String!, $name: String!, $number: Int!) @cacheExpiration(seconds: 60) {
           repository(owner: $owner, name: $name) {
             issue(number: $number) {
               title
@@ -117,6 +118,7 @@ struct PeekIssue: View {
             if let issue = data.repository?.issue {
                 VStack(alignment: .leading, spacing: 8) {
                     PeekHeader(title: issue.title, author: issue.author?.login)
+                    RefreshNotice(fetch: peek.fetch) { peek.retry() }
                     PeekBody(text: issue.bodyText)
                     if let comment = issue.comments.nodes?.last {
                         PeekComment(author: comment.author?.login, text: comment.bodyText, createdAt: comment.createdAt, total: issue.comments.totalCount)
@@ -158,7 +160,7 @@ struct PeekBody: View {
 struct PeekComment: View {
     let author: String?
     let text: String
-    let createdAt: String
+    let createdAt: Date?
     let total: Int
 
     var body: some View {
@@ -167,7 +169,7 @@ struct PeekComment: View {
             HStack {
                 Text("Latest of \(total) comments · \(author ?? "ghost")").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                if let date = try? Date(createdAt, strategy: .iso8601) {
+                if let date = createdAt {
                     Text(Age.short(Date.now.timeIntervalSince(date))).font(.system(size: 10)).foregroundStyle(.secondary)
                 }
             }

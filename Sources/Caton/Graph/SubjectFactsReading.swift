@@ -10,7 +10,7 @@ extension PullRequestFacts_pullRequest {
     /// request naming the viewer is theirs; otherwise a pending request for the
     /// team that last requested them is their team's.
     func facts(viewerID: String) -> SubjectFacts {
-        let pending = reviewRequests?.nodes.map { Array($0) } ?? []
+        let pending = reviewRequests?.nodes ?? .empty
         let pendingUsers = Set(pending.compactMap { $0.requestedReviewer?.asUser?.id })
         let pendingTeams = Set(pending.compactMap { $0.requestedReviewer?.asTeam?.id })
         var request: SubjectFacts.ReviewRequest?
@@ -26,12 +26,12 @@ extension PullRequestFacts_pullRequest {
             isInMergeQueue: isInMergeQueue,
             reviewDecision: reviewDecision.flatMap(SubjectFacts.ReviewDecision.init(graphQL:)),
             checks: statusCheckRollup.flatMap { SubjectFacts.Checks(graphQL: $0.state) },
-            author: author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/"), avatarURL: URL(string: $0.avatarUrl)) },
+            author: author.map { SubjectActor(login: $0.login, isApp: $0.url?.path.hasPrefix("/apps/") == true, avatarURL: $0.avatarUrl) },
             viewerDidAuthor: viewerDidAuthor,
             pendingReviewRequest: request,
             viewerLatestReview: viewerLatestReview.flatMap { SubjectFacts.ReviewState(graphQL: $0.state) },
-            latestCommenter: comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) },
-            latestCommentAt: comments.nodes?.last.flatMap { try? Date($0.createdAt, strategy: .iso8601) }
+            latestCommenter: comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url?.path.hasPrefix("/apps/") == true) },
+            latestCommentAt: comments.nodes?.last?.createdAt
         )
     }
 }
@@ -41,67 +41,67 @@ extension IssueFacts_issue {
     func facts() -> SubjectFacts {
         SubjectFacts(
             nodeID: id,
-            state: state == "OPEN" ? .open : .closed,
+            state: state == .CLOSED ? .closed : .open,
             closedReason: stateReason.flatMap(SubjectFacts.ClosedReason.init(graphQL:)),
-            author: author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/"), avatarURL: URL(string: $0.avatarUrl)) },
+            author: author.map { SubjectActor(login: $0.login, isApp: $0.url?.path.hasPrefix("/apps/") == true, avatarURL: $0.avatarUrl) },
             viewerDidAuthor: viewerDidAuthor,
-            latestCommenter: comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url.contains("/apps/")) },
-            latestCommentAt: comments.nodes?.last.flatMap { try? Date($0.createdAt, strategy: .iso8601) }
+            latestCommenter: comments.nodes?.last?.author.map { SubjectActor(login: $0.login, isApp: $0.url?.path.hasPrefix("/apps/") == true) },
+            latestCommentAt: comments.nodes?.last?.createdAt
         )
     }
 }
 
 extension SubjectFacts.State {
-    init(graphQL: String) {
+    init(graphQL: PullRequestState) {
         switch graphQL {
-        case "MERGED": self = .merged
-        case "CLOSED": self = .closed
+        case .MERGED: self = .merged
+        case .CLOSED: self = .closed
         default: self = .open
         }
     }
 }
 
 extension SubjectFacts.ReviewDecision {
-    init?(graphQL: String) {
+    init?(graphQL: PullRequestReviewDecision) {
         switch graphQL {
-        case "APPROVED": self = .approved
-        case "CHANGES_REQUESTED": self = .changesRequested
-        case "REVIEW_REQUIRED": self = .reviewRequired
+        case .APPROVED: self = .approved
+        case .CHANGES_REQUESTED: self = .changesRequested
+        case .REVIEW_REQUIRED: self = .reviewRequired
         default: return nil
         }
     }
 }
 
 extension SubjectFacts.Checks {
-    init?(graphQL: String) {
+    init?(graphQL: StatusState) {
         switch graphQL {
-        case "SUCCESS": self = .success
-        case "FAILURE", "ERROR": self = .failure
-        case "PENDING", "EXPECTED": self = .pending
+        case .SUCCESS: self = .success
+        case .FAILURE, .ERROR: self = .failure
+        case .PENDING, .EXPECTED: self = .pending
         default: return nil
         }
     }
 }
 
 extension SubjectFacts.ReviewState {
-    init?(graphQL: String) {
+    init?(graphQL: PullRequestReviewState) {
         switch graphQL {
-        case "APPROVED": self = .approved
-        case "CHANGES_REQUESTED": self = .changesRequested
-        case "COMMENTED": self = .commented
-        case "DISMISSED": self = .dismissed
-        case "PENDING": self = .pending
+        case .APPROVED: self = .approved
+        case .CHANGES_REQUESTED: self = .changesRequested
+        case .COMMENTED: self = .commented
+        case .DISMISSED: self = .dismissed
+        case .PENDING: self = .pending
         default: return nil
         }
     }
 }
 
 extension SubjectFacts.ClosedReason {
-    init?(graphQL: String) {
+    init?(graphQL: IssueStateReason) {
         switch graphQL {
-        case "COMPLETED": self = .completed
-        case "NOT_PLANNED": self = .notPlanned
-        case "DUPLICATE": self = .duplicate
+        case .COMPLETED: self = .completed
+        case .NOT_PLANNED: self = .notPlanned
+        case .DUPLICATE: self = .duplicate
         default: return nil
         }
     }

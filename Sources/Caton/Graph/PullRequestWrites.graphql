@@ -7,12 +7,13 @@
 # Asks reviewers again: those still pending, and those whose latest review
 # asked for changes or only commented. The answer carries who is pending
 # now and the new request's time, which "waiting on @alex · 3d" counts
-# from; the optimistic response has only the time, which is all the app
-# knows before GitHub answers.
+# from; the optimistic response puts that time in a client field until
+# GitHub answers, keeping the server's timeline untouched for rollback.
 mutation NudgeReviewersMutation($input: RequestReviewsInput!) {
-  requestReviews(input: $input) {
+  requestReviews(input: $input) @catch {
     pullRequest {
       id
+      catonNudgedAt
       reviewRequests(first: 10) {
         nodes {
           requestedReviewer {
@@ -33,7 +34,7 @@ mutation NudgeReviewersMutation($input: RequestReviewsInput!) {
 
 # Takes a draft out of draft.
 mutation ReadyForReviewMutation($input: MarkPullRequestReadyForReviewInput!) {
-  markPullRequestReadyForReview(input: $input) {
+  markPullRequestReadyForReview(input: $input) @catch {
     pullRequest {
       id
       isDraft

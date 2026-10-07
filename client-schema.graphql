@@ -1,0 +1,5 @@
+# Temporary UI state carried only by the nudge's optimistic layer. It is
+# neither sent to GitHub nor written to the persisted server image.
+extend type PullRequest {
+  catonNudgedAt: DateTime
+}

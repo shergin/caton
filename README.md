@@ -45,13 +45,12 @@ session, panel and command table, and where Baton begins and ends.
 
 ## Running
 
-Caton builds against a checkout of [Baton](https://github.com/shergin/baton)
-beside it (`Package.swift` names `../baton`):
+Caton uses [Baton 0.8](https://github.com/shergin/baton/releases/tag/v0.8.0).
+SwiftPM downloads the package and its matching prebuilt GraphQL compiler;
+no sibling checkout or Rust toolchain is needed:
 
 ```sh
-git clone https://github.com/shergin/baton.git
 git clone https://github.com/shergin/caton.git
-baton/scripts/build-compiler.sh   # Baton's GraphQL compiler, needs Rust; again after pulling Baton
 cd caton
 ```
 
@@ -100,6 +99,10 @@ rules, snoozes, saved searches and Cleared log; switch from the gear menu,
 Settings or `⌘K`.
 
 Requires macOS 26 and Swift 6.2, as Baton does.
+
+The [Baton 0.8 integration](docs/baton-0.8.md) describes typed GraphQL values,
+cache expiration, live model observation, session shutdown, and the debug
+store inspector. SwiftPM keeps Caton on compatible 0.8 patch releases.
 
 `swift test` runs two suites: `CatonCoreTests` (classifier, projection, queue,
 REST client, alerts, search) and `CatonTests` (the app model's verbs, against

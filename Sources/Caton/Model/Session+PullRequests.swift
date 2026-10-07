@@ -30,7 +30,7 @@ extension Session {
     /// comments first. False when the pull request is not loaded.
     @discardableResult
     func remind(_ id: String, until: Date) -> Bool {
-        guard let node = myPullRequestNode(id), let url = URL(string: node.url) else { return false }
+        guard let node = myPullRequestNode(id), let url = node.url else { return false }
         let row = node.myPullRequestRow
         let parts = row.repository.nameWithOwner.split(separator: "/").map(String.init)
         guard parts.count == 2 else { return false }
@@ -202,37 +202,43 @@ extension Session {
     /// answer replaces it, and a refusal takes it back.
     private func send(_ kind: PendingWrite.Kind, to pullRequestID: String, reference: String) async {
         guard let graph else { return }
-        let now = Date.now.formatted(.iso8601)
+        let now = Date.now
         do {
             switch kind {
             case .nudge(let nudge):
-                let input = Variable.object([
-                    "pullRequestId": .string(pullRequestID),
-                    "userIds": .list(nudge.userIDs.map(Variable.string)),
-                    "teamIds": .list(nudge.teamIDs.map(Variable.string)),
-                    "botIds": .list(nudge.botIDs.map(Variable.string)),
-                    "union": .bool(true),
-                ])
+                let input = RequestReviewsInput(
+                    botIds: nudge.botIDs,
+                    pullRequestId: pullRequestID,
+                    teamIds: nudge.teamIDs,
+                    union: true,
+                    userIds: nudge.userIDs
+                )
                 // Before GitHub answers, all the app knows is that review was
                 // asked for now.
                 let optimistic = NudgeReviewersMutation.OptimisticResponse(requestReviews: .init(pullRequest: .init(
                     id: pullRequestID,
-                    timelineItems: .init(nodes: [.init(__typename: "ReviewRequestedEvent", id: "optimistic:\(UUID().uuidString)", createdAt: now)])
+                    catonNudgedAt: now
                 )))
-                _ = try await graph.mutate(NudgeReviewersMutation(input: input), optimistic: optimistic.variable)
+                let result = try await graph.mutate(NudgeReviewersMutation(input: input), optimistic: optimistic.variable)
+                guard !graph.ended else { return }
+                guard try result.requestReviews.get()?.pullRequest != nil else { throw GitHubError.invalidResponse }
                 onWrite?("Asked \(nudge.summary) again on \(reference)")
             case .readyForReview:
                 let optimistic = ReadyForReviewMutation.OptimisticResponse(markPullRequestReadyForReview: .init(pullRequest: .init(id: pullRequestID, isDraft: false)))
-                _ = try await graph.mutate(
-                    ReadyForReviewMutation(input: .object(["pullRequestId": .string(pullRequestID)])),
+                let result = try await graph.mutate(
+                    ReadyForReviewMutation(input: MarkPullRequestReadyForReviewInput(pullRequestId: pullRequestID)),
                     optimistic: optimistic.variable
                 )
+                guard !graph.ended else { return }
+                guard try result.markPullRequestReadyForReview.get()?.pullRequest != nil else { throw GitHubError.invalidResponse }
                 onWrite?("\(reference) is ready for review")
             }
         } catch GitHubError.rateLimited(let until) {
+            guard !graph.ended else { return }
             noteCooldown(until)
             errorMessage = "GitHub's rate limit stopped the change to \(reference); nothing was sent."
         } catch {
+            guard !graph.ended else { return }
             // Baton has already taken the optimistic response back.
             errorMessage = "Couldn't change \(reference): \(error.localizedDescription)"
         }

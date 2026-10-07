@@ -1,4 +1,5 @@
 import Baton
+import BatonTesting
 import CatonCore
 import Foundation
 import Testing
@@ -11,15 +12,6 @@ import Testing
 /// satisfy when the plan keeps type conditions.
 @MainActor
 struct ImageTests {
-    struct Canned: Transport {
-        let response: Data
-        func execute(_ request: Request) async throws -> Data { response }
-    }
-
-    struct Offline: Transport {
-        func execute(_ request: Request) async throws -> Data { throw URLError(.notConnectedToInternet) }
-    }
-
     /// One of the viewer's pull requests, waiting on a person and a team.
     nonisolated static let response = Data(#"""
         {"data":{"viewer":{"login":"me","id":"U_me","pullRequests":{"totalCount":1,"edges":[{"cursor":"c1","node":{
@@ -43,11 +35,12 @@ struct ImageTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let written = Persistence(url: url)
-        let online = Baton.Environment(transport: Canned(response: Self.response), store: Store(persistence: written))
+        let online = Baton.Environment(transport: RecordedTransport([MyPullRequestsQuery.name: Self.response]), store: Store(persistence: written))
         try await online.fetch(MyPullRequestsQuery())
-        await written.close()
+        await online.end()
 
-        let offline = Baton.Environment(transport: Offline(), store: Store(persistence: Persistence(url: url)))
+        let transport = RecordedTransport()
+        let offline = Baton.Environment(transport: transport, store: Store(persistence: Persistence(url: url)))
         let handle = offline.handle(for: MyPullRequestsQuery(), fetchPolicy: .storeOnly)
         guard case .ready(let data) = handle.phase else {
             Issue.record("My PRs was not ready from the image: \(handle.phase)")
@@ -57,5 +50,7 @@ struct ImageTests {
         let status = MyPullRequests.status(node.pullRequestStanding)
         #expect(status.pendingReviewers == [.init(name: "alex", id: "U_alex"), .init(name: "acme/web", isTeam: true, id: "T_web")])
         #expect(PullRequestStanding.of(status).summary(now: status.requestedAt!.addingTimeInterval(2 * 86400)) == "waiting on @alex and @acme/web · 2d")
+        #expect(transport.requestCount == 0)
+        await offline.end()
     }
 }

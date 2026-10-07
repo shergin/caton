@@ -15,7 +15,7 @@ import SwiftUI
 /// for it reads, so a merge or a CI result seen by either shows in both.
 struct MyPullRequestsView: View {
     @Query("""
-        query MyPullRequestsQuery {
+        query MyPullRequestsQuery @cacheExpiration(seconds: 300) {
           viewer {
             login
             ...MyPullRequestList_user
@@ -28,7 +28,10 @@ struct MyPullRequestsView: View {
     var body: some View {
         switch pullRequests.phase {
         case .ready(let data):
-            MyPullRequestList(user: data.viewer.myPullRequestList, viewer: data.viewer.login, model: model)
+            VStack(spacing: 0) {
+                RefreshNotice(fetch: pullRequests.fetch) { pullRequests.retry() }
+                MyPullRequestList(user: data.viewer.myPullRequestList, viewer: data.viewer.login, model: model)
+            }
         case .loading:
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let error):
@@ -40,6 +43,26 @@ struct MyPullRequestsView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// A failed refresh is separate from the phase: cached rows stay usable.
+struct RefreshNotice: View {
+    let fetch: Fetch
+    let retry: () -> Void
+
+    var body: some View {
+        if let failure = fetch.failure {
+            HStack {
+                Label("Couldn't refresh. Showing saved data.", systemImage: "wifi.exclamationmark")
+                Spacer()
+                Button("Retry", action: retry).controlSize(.small)
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .padding(8)
+            .help(failure.localizedDescription)
         }
     }
 }
@@ -150,8 +173,7 @@ enum MyPullRequests {
 
     /// The standing fragment as plain data.
     static func status(_ fragment: PullRequestStanding_pullRequest) -> PullRequestStatus {
-        let date = { (text: String?) in text.flatMap { try? Date($0, strategy: .iso8601) } }
-        let requests = fragment.reviewRequests?.nodes.map { Array($0) } ?? []
+        let requests = fragment.reviewRequests?.nodes ?? .empty
         let reviewers = requests.compactMap { node -> PullRequestStatus.Reviewer? in
             guard let reviewer = node.requestedReviewer else { return nil }
             if let team = reviewer.asTeam { return .init(name: "\(team.organization.login)/\(team.slug)", isTeam: true, id: team.id) }
@@ -161,27 +183,32 @@ enum MyPullRequests {
             if let bot = reviewer.asBot { return .init(name: login, isBot: true, id: bot.id) }
             return .init(name: login, id: reviewer.asUser?.id)
         }
-        let latest = fragment.latestReviews?.nodes.map { Array($0) } ?? []
+        let latest = fragment.latestReviews?.nodes ?? .empty
         let reviews = latest.compactMap { node -> PullRequestStatus.Review? in
             guard let login = node.author?.login, let state = SubjectFacts.ReviewState(graphQL: node.state) else { return nil }
             let author = node.author
-            return PullRequestStatus.Review(login: login, state: state, at: date(node.submittedAt), userID: author?.asUser?.id, botID: author?.asBot?.id)
+            return PullRequestStatus.Review(login: login, state: state, at: node.submittedAt, userID: author?.asUser?.id, botID: author?.asBot?.id)
         }
         let comment = fragment.comments.nodes?.last.flatMap { node -> PullRequestStatus.Comment? in
-            guard let login = node.author?.login, let at = date(node.createdAt) else { return nil }
+            guard let login = node.author?.login, let at = node.createdAt else { return nil }
             return PullRequestStatus.Comment(login: login, at: at)
         }
-        let requestedAt = fragment.timelineItems.nodes?.last.flatMap { $0.asReviewRequestedEvent?.createdAt }.flatMap { date($0) }
+        let requestedAt = fragment.catonNudgedAt ?? fragment.timelineItems.nodes?.last?.asReviewRequestedEvent?.createdAt
+        let mergeable: PullRequestStatus.Mergeable = switch fragment.mergeable {
+        case .MERGEABLE: .mergeable
+        case .CONFLICTING: .conflicting
+        default: .unknown
+        }
         return PullRequestStatus(
             isDraft: fragment.isDraft,
             isInMergeQueue: fragment.isInMergeQueue,
             reviewDecision: fragment.reviewDecision.flatMap(SubjectFacts.ReviewDecision.init(graphQL:)),
-            mergeable: PullRequestStatus.Mergeable(rawValue: fragment.mergeable.lowercased()) ?? .unknown,
+            mergeable: mergeable,
             checks: fragment.statusCheckRollup.flatMap { SubjectFacts.Checks(graphQL: $0.state) },
             pendingReviewers: reviewers,
             latestReviews: reviews,
             requestedAt: requestedAt,
-            createdAt: date(fragment.createdAt) ?? .now,
+            createdAt: fragment.createdAt ?? .now,
             lastComment: comment
         )
     }

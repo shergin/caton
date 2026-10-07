@@ -17,8 +17,8 @@ struct PullRequestIcon: View {
 
     var body: some View {
         let (symbol, color): (String, Color) = switch (pullRequest.state, pullRequest.isDraft, pullRequest.isInMergeQueue) {
-        case ("MERGED", _, _): ("arrow.triangle.merge", .purple)
-        case ("CLOSED", _, _): ("arrow.triangle.pull", .red)
+        case (.MERGED, _, _): ("arrow.triangle.merge", .purple)
+        case (.CLOSED, _, _): ("arrow.triangle.pull", .red)
         case (_, _, true): ("arrow.triangle.merge", .orange)
         case (_, true, _): ("arrow.triangle.pull", .secondary)
         default: ("arrow.triangle.pull", .green)
@@ -40,8 +40,8 @@ struct IssueIcon: View {
 
     var body: some View {
         let (symbol, color): (String, Color) = switch (issue.state, issue.stateReason) {
-        case ("CLOSED", "NOT_PLANNED"?), ("CLOSED", "DUPLICATE"?): ("slash.circle", .secondary)
-        case ("CLOSED", _): ("checkmark.circle", .purple)
+        case (.CLOSED, .NOT_PLANNED?), (.CLOSED, .DUPLICATE?): ("slash.circle", .secondary)
+        case (.CLOSED, _): ("checkmark.circle", .purple)
         default: ("smallcircle.filled.circle", .green)
         }
         SubjectGlyph(symbol: symbol, color: color, isUnread: isUnread)
@@ -62,11 +62,11 @@ struct PullRequestSignals: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if pullRequest.state == "OPEN", let checks = pullRequest.statusCheckRollup?.state {
+            if pullRequest.state == .OPEN, let checks = pullRequest.statusCheckRollup?.state {
                 ChecksGlyph(state: checks)
             }
             if let author = pullRequest.author {
-                Avatar(url: URL(string: author.avatarUrl), login: author.login, kind: actorKind)
+                Avatar(url: author.avatarUrl, login: author.login, kind: actorKind)
             }
         }
     }
@@ -84,7 +84,7 @@ struct IssueSignals: View {
 
     var body: some View {
         if let author = issue.author {
-            Avatar(url: URL(string: author.avatarUrl), login: author.login, kind: actorKind)
+            Avatar(url: author.avatarUrl, login: author.login, kind: actorKind)
         }
     }
 }
@@ -144,14 +144,14 @@ struct SubjectGlyph: View {
 }
 
 struct ChecksGlyph: View {
-    let state: String
+    let state: StatusState
 
     var body: some View {
         switch state {
-        case "SUCCESS":
+        case .SUCCESS:
             Image(systemName: "checkmark").foregroundStyle(.green).font(.system(size: 9, weight: .bold))
                 .help("Checks passed")
-        case "FAILURE", "ERROR":
+        case .FAILURE, .ERROR:
             Image(systemName: "xmark").foregroundStyle(.red).font(.system(size: 9, weight: .bold))
                 .help("Checks failed")
         default:

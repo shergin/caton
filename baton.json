@@ -1,3 +1,8 @@
 {
-  "schema": "schema.docs.graphql"
+  "schema": "schema.docs.graphql",
+  "schemaExtensions": ["client-schema.graphql"],
+  "customScalarTypes": {
+    "DateTime": "Foundation.Date",
+    "URI": "Foundation.URL"
+  }
 }

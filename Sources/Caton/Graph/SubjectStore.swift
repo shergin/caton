@@ -1,12 +1,14 @@
 import Baton
 import CatonCore
 import Foundation
+import Observation
 
 /// The live state of every pull request and issue in the inbox, held in
 /// Baton's store. Each subject has a handle the store retains while its thread
 /// is in the inbox; the first fetch goes through the handle's own query, and
 /// later refreshes go through `nodes(ids:)` in batches into the same records.
 @MainActor
+@Observable
 final class SubjectStore {
     @MainActor
     private enum Handle {
@@ -24,13 +26,6 @@ final class SubjectStore {
             switch self {
             case .pullRequest(let handle): try await handle.refetch()
             case .issue(let handle): try await handle.refetch()
-            }
-        }
-
-        func release() {
-            switch self {
-            case .pullRequest(let handle): handle.release()
-            case .issue(let handle): handle.release()
             }
         }
     }
@@ -58,10 +53,10 @@ final class SubjectStore {
 
     let environment: Baton.Environment
     private let viewerID: String
-    /// Called after a fetch commits, so the inbox can be classified again.
-    var onChange: (() -> Void)?
-
     private var handles: [String: Handle] = [:]
+    @ObservationIgnored private var retentions: [String: Retention] = [:]
+    @ObservationIgnored private var searchRetentions: [Retention] = []
+    @ObservationIgnored private var stopped = false
     /// The thread activity each subject was last fetched for.
     private(set) var fetchedActivity: [String: Date]
     private var failedAt: [String: Date] = [:]
@@ -71,10 +66,30 @@ final class SubjectStore {
     private var lastRefresh = Date.distantPast
     private let reviewRequests: OperationHandle<ReviewRequestsQuery>
     private var lastReviewRequestSearch = Date.distantPast
-    private var reviewRequestsByNodeID: [String: ReviewRequest] = [:]
+    private var reviewRequestsByNodeID: [String: ReviewRequest] {
+        guard case .ready(let data) = reviewRequests.phase else { return [:] }
+        return Dictionary((data.search.nodes ?? .empty).compactMap { node in
+            node.asPullRequest.map { ($0.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+    }
     /// Open pull requests that request the viewer, in a thread's shape with
     /// the pull request's node id as `id`.
-    private(set) var reviewRequestThreads: [NotificationThread] = []
+    var reviewRequestThreads: [NotificationThread] {
+        reviewRequestsByNodeID.values.compactMap { pullRequest in
+            guard let url = pullRequest.url else { return nil }
+            return NotificationThread(
+                id: pullRequest.id,
+                repository: RepositoryName(owner: pullRequest.repository.owner.login, name: pullRequest.repository.name),
+                kind: .pullRequest,
+                number: pullRequest.number,
+                title: pullRequest.title,
+                reason: .reviewRequested,
+                isUnread: true,
+                updatedAt: pullRequest.updatedAt ?? .distantPast,
+                webURL: url
+            )
+        }.sorted { $0.id < $1.id }
+    }
     /// The viewer's open pull requests. This is the operation the My PRs view
     /// declares, asked for by value: the environment hands the view and this
     /// store the same handle, so the view renders what is kept fresh here.
@@ -85,67 +100,73 @@ final class SubjectStore {
         self.viewerID = viewerID
         self.fetchedActivity = fetchedActivity
         reviewRequests = environment.handle(for: ReviewRequestsQuery(), fetchPolicy: .storeOnly)
-        reviewRequests.retain()
+        searchRetentions.append(reviewRequests.retain())
         // From the image at launch when an earlier one fetched it; fetched now otherwise.
         myPullRequests = environment.handle(for: MyPullRequestsQuery(), fetchPolicy: .storeOrNetwork)
-        myPullRequests.retain()
+        searchRetentions.append(myPullRequests.retain())
         #if DEBUG
         if ProcessInfo.processInfo.environment["CATON_DUMP"] == "1" {
             let ready = if case .ready = myPullRequests.phase { true } else { false }
             FileHandle.standardError.write(Data("[caton] my pull requests at launch: \(ready ? "ready from the image" : "not in the store")\n".utf8))
         }
         #endif
-        indexReviewRequests()
     }
 
     /// Runs the searches outside the feed, at most every few minutes; forced,
     /// at most once a minute: open pull requests that request the viewer by
     /// name, and the viewer's own open pull requests.
     func searchReviewRequests(force: Bool = false, now: Date = .now) {
+        guard !stopped else { return }
         let age = now.timeIntervalSince(lastReviewRequestSearch)
         guard age > (force ? 60 : Self.reviewRequestInterval) else { return }
         lastReviewRequestSearch = now
         Task {
             // A failed search keeps what the store had; the next one tries again.
             async let requests: Void? = try? reviewRequests.refetch()
-            async let mine: Void? = try? myPullRequests.refetch()
+            async let mine: Void = refreshMyPullRequests(force: force)
             _ = await (requests, mine)
-            indexReviewRequests()
-            onChange?()
         }
     }
 
-    private func indexReviewRequests() {
-        guard case .ready(let data) = reviewRequests.phase, let nodes = data.search.nodes else { return }
-        var byNodeID: [String: ReviewRequest] = [:]
-        var threads: [NotificationThread] = []
-        for node in nodes {
-            guard let pullRequest = node.asPullRequest, let url = URL(string: pullRequest.url) else { continue }
-            byNodeID[pullRequest.id] = pullRequest
-            threads.append(NotificationThread(
-                id: pullRequest.id,
-                repository: RepositoryName(owner: pullRequest.repository.owner.login, name: pullRequest.repository.name),
-                kind: .pullRequest,
-                number: pullRequest.number,
-                title: pullRequest.title,
-                reason: .reviewRequested,
-                isUnread: true,
-                updatedAt: (try? Date(pullRequest.updatedAt, strategy: .iso8601)) ?? .now,
-                webURL: url
-            ))
+    private func refreshMyPullRequests(force: Bool) async {
+        // The first attach or panel revalidation may already be fetching.
+        // A refetch supersedes that request, so share it while it is in flight.
+        if case .inFlight = myPullRequests.fetch { return }
+        guard force || myPullRequests.isStale || myPullRequests.fetch.failure != nil else { return }
+        try? await myPullRequests.refetch()
+    }
+
+    /// Reading these values inside Observations follows every operation
+    /// that changes them, including a peek, a page, or an optimistic write.
+    struct ProjectionInput {
+        let facts: [SubjectFacts]
+        let reviewRequests: [NotificationThread]
+        let standings: [PullRequestStatus]
+        let hasMorePullRequests: Bool
+    }
+
+    var projectionInput: ProjectionInput {
+        var facts = handles.keys.compactMap { self.facts(forThread: $0) }
+        facts += reviewRequestsByNodeID.values.map { $0.pullRequestFacts.facts(viewerID: viewerID) }
+        var standings: [PullRequestStatus] = []
+        var hasMore = false
+        if case .ready(let data) = myPullRequests.phase {
+            let user = data.viewer.myPullRequestList
+            standings = user.pullRequests.nodes.filter { !$0.repository.isArchived }.map { MyPullRequests.status($0.pullRequestStanding) }
+            hasMore = user.pullRequests.hasNext
         }
-        reviewRequestsByNodeID = byNodeID
-        reviewRequestThreads = threads
+        return ProjectionInput(facts: facts, reviewRequests: reviewRequestThreads, standings: standings, hasMorePullRequests: hasMore)
     }
 
     /// Brings handles in line with the inbox's threads and starts what is due:
     /// a first fetch for subjects the store lacks, a batched refresh for
     /// subjects with newer activity, and a periodic refresh of open subjects.
     func sync(_ threads: [NotificationThread], now: Date = .now) {
+        guard !stopped else { return }
         let enrichable = threads.filter { $0.kind.isIssueOrPullRequest && $0.number != nil }
         let live = Set(enrichable.map(\.id))
-        for (id, handle) in handles where !live.contains(id) {
-            handle.release()
+        for id in handles.keys where !live.contains(id) {
+            retentions[id] = nil
             handles[id] = nil
             fetchedActivity[id] = nil
             failedAt[id] = nil
@@ -225,9 +246,9 @@ final class SubjectStore {
 
     /// Releases every handle, for a sign-out.
     func releaseAll() {
-        reviewRequests.release()
-        myPullRequests.release()
-        for handle in handles.values { handle.release() }
+        stopped = true
+        searchRetentions.removeAll()
+        retentions.removeAll()
         handles.removeAll()
         discovery.removeAll()
         queued.removeAll()
@@ -244,12 +265,12 @@ final class SubjectStore {
         case .pullRequest:
             let operation = PullRequestSubjectQuery(owner: thread.repository.owner, name: thread.repository.name, number: number)
             let pullRequest = environment.handle(for: operation, fetchPolicy: .storeOnly)
-            pullRequest.retain()
+            retentions[thread.id] = pullRequest.retain()
             handle = .pullRequest(pullRequest)
         default:
             let operation = IssueSubjectQuery(owner: thread.repository.owner, name: thread.repository.name, number: number)
             let issue = environment.handle(for: operation, fetchPolicy: .storeOnly)
-            issue.retain()
+            retentions[thread.id] = issue.retain()
             handle = .issue(issue)
         }
         handles[thread.id] = handle
@@ -262,6 +283,7 @@ final class SubjectStore {
     }
 
     private func pump() {
+        guard !stopped else { return }
         while inFlight < Self.concurrency, !discovery.isEmpty {
             let job = discovery.removeFirst()
             guard let handle = handles[job.threadID] else {
@@ -275,14 +297,14 @@ final class SubjectStore {
                 let landed = (try? await handle.refetch()) != nil
                 inFlight -= 1
                 queued.remove(job.threadID)
+                defer { pump() }
+                guard !stopped, handles[job.threadID] != nil else { return }
                 if landed {
                     fetchedActivity[job.threadID] = job.activity
                     failedAt[job.threadID] = nil
                 } else {
                     failedAt[job.threadID] = .now
                 }
-                onChange?()
-                pump()
             }
         }
     }
@@ -312,9 +334,10 @@ final class SubjectStore {
             }
             do {
                 try await fetch()
+                guard !stopped else { return }
                 for (_, thread) in chunk { fetchedActivity[thread.id] = thread.updatedAt }
-                onChange?()
             } catch {
+                guard !stopped else { return }
                 for (_, thread) in chunk { failedAt[thread.id] = .now }
             }
         }

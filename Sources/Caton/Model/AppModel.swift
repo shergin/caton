@@ -38,6 +38,7 @@ final class AppModel {
             guard isPanelVisible != oldValue else { return }
             if isPanelVisible {
                 panel.forgetOrder()
+                inbox?.graph?.revalidate()
                 inbox?.refresh(force: false)
                 inbox?.subjects?.searchReviewRequests(force: true)
                 if welcome != nil { panel.overlay = .welcome } else { offerTips() }
@@ -111,6 +112,7 @@ final class AppModel {
     /// Sends what the account's session has queued, for a quit.
     func drain() async {
         await accounts.session?.drain()
+        await accounts.session?.end()
     }
 
     /// Takes a new account session: the panel starts over on it.

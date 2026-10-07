@@ -25,15 +25,15 @@ extension AppModel {
     }
 
     func openPullRequest(_ id: String? = nil) {
-        guard let id = id ?? panel.selectedPullRequestID, let url = myPullRequestNode(id).flatMap({ URL(string: $0.url) }) else { return }
+        guard let id = id ?? panel.selectedPullRequestID, let url = myPullRequestNode(id)?.url else { return }
         panel.select(.pullRequest(id))
         openURL(url)
     }
 
     func copyPullRequestLink(_ id: String? = nil) {
-        guard let id = id ?? panel.selectedPullRequestID, let node = myPullRequestNode(id) else { return }
+        guard let id = id ?? panel.selectedPullRequestID, let node = myPullRequestNode(id), let url = node.url else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(node.url, forType: .string)
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
         panel.toast("Copied \(Session.reference(of: node))")
     }
 

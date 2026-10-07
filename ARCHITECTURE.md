@@ -155,13 +155,16 @@ NSEvent -> KeyPress -> KeyRouter -> overlay handler | g prefix | Command.match -
 - **The model's operations sit beside the model**, in `.graphql` files:
   `Graph/Subjects.graphql` and `Graph/PullRequestWrites.graphql`.
 - **The subject store** keeps one handle per subject, retained while the
-  thread is in the inbox. A notification names its subject by repository
+  thread is in the inbox by a `Retention` token. A notification names its subject by repository
   and number, so the first fetch goes through `repository(owner:name:)`.
   Later refreshes go through `nodes(ids:)` in batches into the same
   records.
 - **Facts cross the boundary as values.** `SubjectFactsReading.swift`
   reads the facts fragments into plain `SubjectFacts`, so the classifier
-  stays pure and never sees Baton.
+  stays pure and never sees Baton. The generated fields use schema enums
+  and mapped `Date`/`URL` scalars. A session observes these readings with
+  `Observations`, so any operation's commit updates classification and
+  reminders, including a peek, a page, or an optimistic response.
 - **Handles are shared by value.** The model asks for
   `MyPullRequestsQuery()` and gets the same handle as the view's `@Query`:
   one fetch and one cache, kept fresh from the model.
@@ -169,7 +172,18 @@ NSEvent -> KeyPress -> KeyRouter -> overlay handler | g prefix | Command.match -
   on-disk image before the network answers.
 - **Writes are optimistic.** A mutation shows its typed optimistic response
   at once. GitHub's answer replaces it, and Baton takes it back if GitHub
-  refuses. `WriteTests` plays GitHub to show all three.
+  refuses, including field errors in a partial GraphQL response. Nudge's
+  provisional time is the client field `catonNudgedAt`, leaving the server's
+  timeline intact; it is absent from network documents and persisted data.
+  `BatonTesting.ScriptedTransport` plays GitHub to show all three.
+- **Freshness belongs to the query.** My PRs expires after five minutes,
+  Peek after one minute. Opening the panel revalidates retained queries;
+  a failed refresh leaves cached rows visible with a retry notice. Subject
+  discovery and batched refresh keep their own queue and `storeOnly` policy.
+- **The environment is the account session.** Stopping a session cancels
+  observation, drops its retentions, and ends its environment. Switching
+  awaits the end before opening the next image; signing out ends, removes
+  the image, then forgets the credential. Late responses cannot repopulate it.
 
 When Caton needs something Baton does not have, the fix belongs in Baton;
 Caton does not work around it.
@@ -203,6 +217,10 @@ Caton does not work around it.
   - `KeyTests`: keys through the router, built by hand.
   - `WriteTests`: a scripted GraphQL transport playing GitHub.
   - `ImageTests`: the launch from the image.
+  - `GraphStateTests`: classification and reminders after another operation
+    commits, cached refresh failures, and typed values.
+  - `GraphTransportTests`: bounded query retries, a mutation sent once, and
+    the rate governor shared with REST.
   - `SpeedTests`: keystrokes, search and reclassification at 1,000
     threads, each held to a time budget.
 - Against a real account, run with `CATON_DRY_RUN=1` so nothing reaches

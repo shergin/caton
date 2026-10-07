@@ -1,6 +1,9 @@
 import AppKit
 import CatonCore
 import SwiftUI
+#if DEBUG
+import BatonInspector
+#endif
 
 /// The settings window.
 @MainActor
@@ -47,6 +50,11 @@ struct SettingsView: View {
             Tab("Account", systemImage: "person.crop.circle") { account }
             Tab("Shortcuts", systemImage: "keyboard") { ShortcutsList() }
             Tab("About", systemImage: "info.circle") { AboutView(model: model, updates: model.updates) }
+            #if DEBUG
+            if let graph = model.graph {
+                Tab("Store", systemImage: "cylinder") { StoreInspector(graph) }
+            }
+            #endif
         }
         .padding(20)
         .frame(width: 560, height: 480)

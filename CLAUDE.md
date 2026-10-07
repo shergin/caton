@@ -1,6 +1,6 @@
 # Working in Caton
 
-Caton is a demo app built on Baton (`../baton`). Read `PRD.md` for what it is
+Caton is a demo app built on Baton 0.8, pinned by `Package.resolved`. Read `PRD.md` for what it is
 for. The research behind it is kept locally in `research/`, outside git.
 
 ## Build and test
@@ -45,10 +45,17 @@ aside).
   model that needs a view's query asks for the same operation value and
   shares its handle. The schema is `schema.docs.graphql` at the root with
   `baton.json`.
-- After pulling Baton, rebuild its compiler (`../baton/scripts/build-compiler.sh`)
-  and clear the generated code, which a new compiler does not regenerate on
-  its own: `rm -rf .build/plugins/outputs/caton/Caton/destination/BatonPlugin`.
-  Code from an old compiler does not match a new runtime.
+- SwiftPM downloads Baton's matching prebuilt compiler. No sibling checkout
+  or Rust build is required. The plugin regenerates code when its compiler,
+  config, schema extensions, or documents change. `swift package resolve`
+  restores the versions in the lockfile.
+- `baton.json` maps GraphQL dates and URLs to Foundation types and includes
+  `client-schema.graphql`, whose nudge timestamp exists only in an optimistic
+  layer. Retain model handles with `Retention` tokens and end the environment
+  before deleting its image or opening another store on the same file.
+- Tests use `BatonTesting` fixtures and held mutations. Changes to GraphQL
+  facts are observed through `Observations`; do not add fetch callbacks to
+  keep classification or reminders in sync.
 
 ## Conventions
 

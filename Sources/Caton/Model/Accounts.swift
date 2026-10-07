@@ -35,6 +35,7 @@ final class Accounts {
     @ObservationIgnored private let persistence: StatePersistence
     @ObservationIgnored private let dryRun: Bool
     @ObservationIgnored private var signInTask: Task<Void, Never>?
+    @ObservationIgnored private var cleanupTask: Task<Void, Never>?
 
     init(preferences: Preferences, persistence: StatePersistence, dryRun: Bool) {
         self.preferences = preferences
@@ -124,7 +125,9 @@ final class Accounts {
     /// Puts the current session away: its changes get a moment to reach
     /// GitHub, its inbox is saved, and its work stops.
     private func setAside() async {
+        cancelSignIn()
         await session?.drain()
+        await session?.end()
         replace(with: nil)
     }
 
@@ -188,24 +191,33 @@ final class Accounts {
     /// Signs the active account out: its token, its saved inbox and its
     /// cached subjects go. Another signed-in account, if any, takes its place.
     func signOut(because reason: String? = nil) {
+        cancelSignIn()
         let key = activeKey ?? preferences.activeAccount
-        let image = session?.connection?.image
+        let previous = session
         replace(with: nil)
-        image?.removeAll()
-        if let key {
-            TokenStore.delete(account: key)
-            persistence.use(account: key)
-            preferences.accounts.removeAll { $0.key == key }
-        }
-        persistence.remove()
-        state = .signedOut
-        isAdding = false
-        signInError = reason
-        if let next = preferences.accounts.first {
-            preferences.activeAccount = next.key
-            open(account: next.key)
-        } else {
-            preferences.activeAccount = nil
+        state = .connecting
+        let earlierCleanup = cleanupTask
+        cleanupTask = Task {
+            await earlierCleanup?.value
+            await previous?.end()
+            previous?.connection?.image?.removeAll()
+            if let key {
+                persistence.use(account: key)
+                preferences.accounts.removeAll { $0.key == key }
+            }
+            persistence.remove()
+            // The environment has ended and its image is gone before the
+            // credential is forgotten or another account opens that file.
+            if let key { TokenStore.delete(account: key) }
+            state = .signedOut
+            isAdding = false
+            signInError = reason
+            if let next = preferences.accounts.first {
+                preferences.activeAccount = next.key
+                open(account: next.key)
+            } else {
+                preferences.activeAccount = nil
+            }
         }
     }
 
@@ -213,16 +225,22 @@ final class Accounts {
     /// time, the cached inbox renders at once and the token is checked behind
     /// it; a new sign-in (no saved inbox handed in) waits for the check.
     private func connect(token: String, host: GitHubHost, expected: Viewer?, persisted: PersistedState?) {
+        signInTask?.cancel()
         signInError = nil
         let isNew = persisted == nil
-        if let expected, let persisted {
-            activate(token: token, viewer: expected, persisted: persisted)
-        } else {
-            state = .connecting
-        }
-        Task {
+        let cleanup = cleanupTask
+        signInTask = Task {
+            await cleanup?.value
+            guard !Task.isCancelled else { return }
+            if let expected, let persisted {
+                await activate(token: token, viewer: expected, persisted: persisted)
+            } else {
+                state = .connecting
+            }
+            guard !Task.isCancelled else { return }
             do {
                 let viewer = try await GitHubREST(token: token, host: host).viewer()
+                try Task.checkCancellation()
                 if isNew { try TokenStore.save(token, account: viewer.key) }
                 if case .signedIn(let current) = state, current.key == viewer.key {
                     remember(viewer)
@@ -231,8 +249,9 @@ final class Accounts {
                 // A new sign-in, or a token that turned out to be another
                 // account's: show that account's own saved inbox, if any.
                 persistence.use(account: viewer.key)
-                activate(token: token, viewer: viewer, persisted: persistence.load())
+                await activate(token: token, viewer: viewer, persisted: persistence.load())
             } catch GitHubError.unauthorized {
+                guard !Task.isCancelled else { return }
                 if isNew {
                     signInError = GitHubError.unauthorized.localizedDescription
                     state = .signedOut
@@ -240,6 +259,7 @@ final class Accounts {
                     signOut(because: "GitHub rejected the saved token. Sign in again.")
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 if isNew {
                     signInError = error.localizedDescription
                     state = .signedOut
@@ -263,7 +283,9 @@ final class Accounts {
 
     /// Makes the account's session: its REST client and Baton environment
     /// sharing one rate governor, its subject image, and its saved inbox.
-    private func activate(token: String, viewer: Viewer, persisted: PersistedState) {
+    private func activate(token: String, viewer: Viewer, persisted: PersistedState) async {
+        await session?.end()
+        guard !Task.isCancelled else { return }
         persistence.use(account: viewer.key)
         remember(viewer)
         isAdding = false
@@ -272,7 +294,8 @@ final class Accounts {
         // Another schema starts the image again; a changed fragment does not
         // need to: the check misses only the new fields, and they are fetched.
         let image = Persistence(url: AppPaths.caches.appending(path: file), version: Types.schemaDigest)
-        let graph = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image), releaseBufferSize: 50)
+        let graph = Baton.Environment(transport: GraphTransport(token: token, host: viewer.host, governor: governor), store: Store(persistence: image, releaseBufferSize: 50))
+        graph.log = GraphDiagnostics.record
         let subjects = SubjectStore(environment: graph, viewerID: viewer.nodeID, fetchedActivity: persisted.fetchedActivity)
         let connection = Session.Connection(rest: GitHubREST(token: token, host: viewer.host, governor: governor), graph: graph, subjects: subjects, image: image)
         use(Session(

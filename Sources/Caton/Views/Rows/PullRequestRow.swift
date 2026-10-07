@@ -95,6 +95,7 @@ struct StandingLabel: View {
           reviewDecision
           mergeable
           createdAt
+          catonNudgedAt
           statusCheckRollup { state }
           reviewRequests(first: 10) {
             nodes {

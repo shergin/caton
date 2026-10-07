@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "Caton", targets: ["Caton"]),
     ],
     dependencies: [
-        .package(path: "../baton"),
+        .package(url: "https://github.com/shergin/baton.git", .upToNextMinor(from: "0.8.0")),
     ],
     targets: [
         .target(
@@ -21,6 +21,7 @@ let package = Package(
             dependencies: [
                 "CatonCore",
                 .product(name: "Baton", package: "baton"),
+                .product(name: "BatonInspector", package: "baton"),
             ],
             path: "Sources/Caton",
             resources: [.process("Resources")],
@@ -29,7 +30,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CatonTests",
-            dependencies: ["Caton", "CatonCore"],
+            dependencies: ["Caton", "CatonCore", .product(name: "BatonTesting", package: "baton")],
             path: "Tests/CatonTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

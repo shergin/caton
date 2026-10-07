@@ -69,6 +69,10 @@ final class Session {
     @ObservationIgnored private let persistence: StatePersistence?
     @ObservationIgnored private let syncsRuleClears: @MainActor () -> Bool
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var graphObservation: Task<Void, Never>?
+    @ObservationIgnored private var recomputeTask: Task<Void, Never>?
+    @ObservationIgnored private var endTask: Task<Void, Never>?
+    @ObservationIgnored private var stopped = false
     @ObservationIgnored var dispatchTask: Task<Void, Never>?
     @ObservationIgnored private var recomputeScheduled = false
     @ObservationIgnored private(set) var hasPolled = false
@@ -106,9 +110,6 @@ final class Session {
         state = persisted.state
         state.queue.resumeAfterLaunch()
         threads = Dictionary(persisted.threads.filter { !PracticeInbox.isPractice($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
-        if case .github(let connection) = source {
-            connection.subjects.onChange = { [weak self] in self?.scheduleRecompute() }
-        }
     }
 
     /// The practice inbox: made-up threads that fill every split, connected
@@ -141,14 +142,34 @@ final class Session {
 
     /// Starts the feed and the dispatcher.
     func start() {
+        guard !stopped else { return }
         subjects?.sync(Array(threads.values))
         recompute()
+        if let subjects {
+            let changes = Observations<SubjectStore.ProjectionInput?, Never> { [weak subjects] in subjects?.projectionInput }
+            graphObservation = Task { [weak self] in
+                for await _ in changes {
+                    guard !Task.isCancelled, let self else { return }
+                    self.scheduleRecompute()
+                }
+            }
+        }
         startDispatching()
         if connection != nil { startPolling() }
     }
 
     /// Stops the session's work and lets go of its subjects.
     func stop() {
+        guard !stopped else { return }
+        stopped = true
+        graphObservation?.cancel()
+        graphObservation = nil
+        recomputeTask?.cancel()
+        recomputeTask = nil
+        onChange = nil
+        onPoll = nil
+        onUnauthorized = nil
+        onWrite = nil
         pollTask?.cancel()
         pollTask = nil
         dispatchTask?.cancel()
@@ -156,6 +177,15 @@ final class Session {
         for write in pendingWrites.values { write.task.cancel() }
         pendingWrites.removeAll()
         subjects?.releaseAll()
+        if let graph, endTask == nil {
+            endTask = Task { await graph.end() }
+        }
+    }
+
+    /// Waits until no response can reach this account's memory or image.
+    func end() async {
+        stop()
+        await endTask?.value
     }
 
     /// Sends every queued action now, waits briefly, and saves: for a quit or
@@ -174,7 +204,7 @@ final class Session {
     /// Polls now. Forced, the feed is fetched even when GitHub would answer
     /// that nothing changed; otherwise the poll is a free conditional request.
     func refresh(force: Bool = true) {
-        guard connection != nil else { return }
+        guard connection != nil, !stopped else { return }
         startPolling(force: force)
     }
 
@@ -284,8 +314,9 @@ final class Session {
     private func scheduleRecompute() {
         guard !recomputeScheduled else { return }
         recomputeScheduled = true
-        Task {
-            try? await Task.sleep(for: .milliseconds(50))
+        recomputeTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            guard let self else { return }
             recomputeScheduled = false
             recompute()
         }
