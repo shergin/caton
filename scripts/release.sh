@@ -5,7 +5,7 @@
 #
 # With --publish it then tags v<version>, creates the GitHub Release with the
 # zip, records the cask in homebrew/caton.rb here, and updates
-# Casks/caton.rb in shergin/homebrew-tap. Run it from a clean main that
+# Casks/caton.rb in shergin/homebrew-tap. Run it from a clean master that
 # matches origin, after bumping the version.
 set -e
 cd "$(dirname "$0")/.."
@@ -19,9 +19,9 @@ zip="build/Caton-$version.zip"
 
 if $publish; then
   [ -z "$(git status --porcelain)" ] || { echo "The working tree has changes; commit them first." >&2; exit 1; }
-  [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "Release from main." >&2; exit 1; }
+  [ "$(git rev-parse --abbrev-ref HEAD)" = master ] || { echo "Release from master." >&2; exit 1; }
   git fetch -q origin
-  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "main and origin/main differ; push or pull first." >&2; exit 1; }
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] || { echo "master and origin/master differ; push or pull first." >&2; exit 1; }
   if git rev-parse -q --verify "refs/tags/$tag" >/dev/null || git ls-remote --exit-code --tags origin "$tag" >/dev/null; then
     echo "$tag exists; bump AppInfo.version first." >&2
     exit 1
@@ -66,7 +66,7 @@ gh release create "$tag" "$zip" --title "Caton $version" --notes-file "$notes"
 cp build/caton.rb homebrew/caton.rb
 git add homebrew/caton.rb
 git commit -q -m "Record $tag release"
-git push -q origin main
+git push -q origin master
 
 tap=$(mktemp -d)
 gh repo clone shergin/homebrew-tap "$tap" -- -q

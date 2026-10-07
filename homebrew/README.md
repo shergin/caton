@@ -19,7 +19,7 @@ with `brew upgrade --cask caton`; the app says when one is out.
 1. Bump `version` in `Sources/Caton/App/AppInfo.swift`, commit and push.
 2. `./scripts/release.sh` tests, builds `build/Caton-<version>.zip` and writes
    the cask with its sha256 to `build/caton.rb`, publishing nothing.
-3. `./scripts/release.sh --publish` does the same from a clean `main`, then
+3. `./scripts/release.sh --publish` does the same from a clean `master`, then
    tags `v<version>`, creates the GitHub Release with the zip, commits the
    cask here ("Record v<version> release") and pushes it to the tap.
 4. `brew update && brew upgrade --cask caton` to check the result.
