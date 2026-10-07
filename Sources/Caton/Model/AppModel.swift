@@ -70,6 +70,9 @@ final class AppModel {
 
     // MARK: Unobserved state
 
+    /// Shows the update check. Set by the app delegate; the model does not
+    /// present alerts.
+    @ObservationIgnored var presentUpdateCheck: (() -> Void)?
     /// Opens a page; the browser by default.
     @ObservationIgnored let openURL: @MainActor (URL) -> Void
     /// No change reaches GitHub; for development against a real account.
@@ -279,29 +282,8 @@ final class AppModel {
     /// The account's Needs me count, for the menu bar.
     var needsMeCount: Int { accounts.session?.snapshot.count(.needsMe) ?? 0 }
 
-    /// Checks for a newer release and says what it found.
-    func checkForUpdates() {
-        Task {
-            await updates.check(userInitiated: true)
-            let alert = NSAlert()
-            alert.messageText = updates.status ?? "Caton \(updates.currentVersion)"
-            if let release = updates.available {
-                alert.informativeText = "You have \(updates.currentVersion). Update with:\n\(Updates.upgradeCommand)"
-                alert.addButton(withTitle: "Copy Command")
-                alert.addButton(withTitle: "Release Notes")
-                alert.addButton(withTitle: "Later")
-                NSApp.activate()
-                switch alert.runModal() {
-                case .alertFirstButtonReturn: updates.copyUpgradeCommand()
-                case .alertSecondButtonReturn: openURL(release.url)
-                default: break
-                }
-            } else {
-                NSApp.activate()
-                alert.runModal()
-            }
-        }
-    }
+    /// Checks for a newer release. The shell presents what it found.
+    func checkForUpdates() { presentUpdateCheck?() }
 
     /// Shows the three-key tip once, on a signed-in panel with nothing else over it.
     func offerTips() {
@@ -350,8 +332,6 @@ final class AppModel {
     func lenses(for id: ItemID) -> SubjectStore.Lenses { inbox?.lenses(for: id) ?? SubjectStore.Lenses() }
 
     func facts(for id: ItemID) -> SubjectFacts? { inbox?.facts(for: id) }
-
-    func spokenState(for item: InboxItem) -> String { inbox?.spokenState(for: item) ?? "" }
 
     // MARK: Debugging
 

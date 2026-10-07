@@ -107,7 +107,9 @@ final class Panel {
     /// keeps the selection on screen.
     func relayout() {
         guard !isBatching else { return }
-        items = layoutItems()
+        let laidOut = layoutItems()
+        items = laidOut.items
+        repositoryOrder = laidOut.order
         let bundles = section == .split(.feed) && SearchQuery(searchQuery).isEmpty
         rows = ListLayout.rows(items, groupByRepository: groupByRepository, bundles: bundles, expanded: expandedBundles) { [session] item in
             item.classification.actorKind == .bot ? session?.facts(for: item.id)?.author?.login : nil
@@ -143,8 +145,11 @@ final class Panel {
         }
     }
 
-    private func layoutItems() -> [InboxItem] {
-        guard let session else { return [] }
+    /// The current section's items, and the repository order after this pass.
+    /// The order comes back with the items, so reading the list does not
+    /// change the panel.
+    private func layoutItems() -> (items: [InboxItem], order: [RepositoryName]) {
+        guard let session else { return ([], repositoryOrder) }
         var items: [InboxItem]
         switch section {
         case .split(let split): items = session.snapshot.items(in: split)
@@ -158,17 +163,19 @@ final class Panel {
         if !query.isEmpty {
             items = items.filter { query.matches($0, facts: session.facts(for: $0.id)) }
         }
-        guard groupByRepository else { return items }
-        var rank = Dictionary(repositoryOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        guard groupByRepository else { return (items, repositoryOrder) }
+        var order = repositoryOrder
+        var rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         for item in items where rank[item.thread.repository] == nil {
-            rank[item.thread.repository] = repositoryOrder.count
-            repositoryOrder.append(item.thread.repository)
+            rank[item.thread.repository] = order.count
+            order.append(item.thread.repository)
         }
         // Sort positions, not the items themselves: an item is large.
         let ranks = items.map { rank[$0.thread.repository] ?? .max }
-        return items.indices
+        let sorted = items.indices
             .sorted { ranks[$0] == ranks[$1] ? $0 < $1 : ranks[$0] < ranks[$1] }
             .map { items[$0] }
+        return (sorted, order)
     }
 
     // MARK: Reading the list

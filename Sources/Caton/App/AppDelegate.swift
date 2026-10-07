@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         model.openSettings = { [weak self] in self?.settings.show() }
+        model.presentUpdateCheck = { [weak self] in
+            guard let self else { return }
+            Task { await UpdatePrompt.show(self.model.updates, openURL: self.model.openURL) }
+        }
         model.start()
         model.updates.start()
         let statusItem = StatusItemController(model: model)

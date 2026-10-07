@@ -34,10 +34,15 @@ and the session's connection and pull request code.
 - `Classifier` takes a thread and its subject's facts and returns a
   `Classification`: the split, a badge, and `because`, the sentence the
   "Why is this here?" card shows.
-- `InboxProjection.project(threads:reviewRequests:reminders:facts:state:now:)`
+- `InboxFeed` folds a poll into the threads Caton is holding: which stay,
+  which are now read, and which read threads have aged out.
+- `FollowUps` decides which reminders join Needs me and which are finished.
+- `InboxProjection.project(threads:reviewRequests:reminders:facts:state:remembered:now:)`
   returns an `InboxSnapshot`: the four splits, Snoozed, Later, the rule
-  clears to apply, and the snoozes that woke up. It is a pure function,
-  so the same inputs always give the same inbox.
+  clears to apply, and the snoozes that woke up. A remembered resurfacing
+  note is applied here, so the snapshot the function returns is the one
+  the list draws. It is a pure function, so the same inputs always give
+  the same inbox.
 - `LocalState` is everything Caton knows that GitHub does not: dismissals
   keyed by the activity they cover, read marks, snoozes, Later, rules, the
   bot, AI-reviewer and agent lists, saved searches, reminders, the Cleared
@@ -72,8 +77,11 @@ store and the on-disk image) or `.local(facts:)`, which connects to nothing
 and serves the practice inbox and the tests.
 
 - **Life** (`Session.swift`): `start()` polls the feed at least every 60
-  seconds and merges the result into the threads. It syncs the subject
-  store, then `recompute()` projects a new snapshot and saves it.
+  seconds. `InboxFeed` folds the poll into the threads. `recompute()` asks
+  `FollowUps` and `InboxProjection` what the inbox is, applies what they
+  report (finished reminders, rule clears, woken snoozes), and projects
+  once more when a clear changed membership. The snapshot it stores is the
+  one the projection returned.
 - **Changes** (`Session+Changes.swift`): each verb records local state,
   queues its action when it should reach GitHub, and adds its undo to the
   session's history. Practice has its own history, so the account's is

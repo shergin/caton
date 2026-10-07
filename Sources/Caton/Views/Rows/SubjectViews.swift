@@ -190,21 +190,13 @@ struct Avatar: View {
 }
 
 extension ActorKind {
+    /// The badge drawn on an avatar. The spoken name is `title`.
     var symbol: String? {
         switch self {
         case .human: nil
         case .bot: "gearshape.fill"
         case .aiReviewer: "sparkles"
         case .agent: "cpu"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .human: "person"
-        case .bot: "bot"
-        case .aiReviewer: "AI reviewer"
-        case .agent: "agent"
         }
     }
 }

@@ -100,12 +100,16 @@ public enum InboxProjection {
     ///     feed already has a thread for are left out.
     ///   - reminders: follow-ups that came due, already classified: they
     ///     join Needs me as they are.
+    ///   - remembered: resurfacing notes from snoozes that already woke, so
+    ///     the note outlives the snooze. A fresher reason, from new activity
+    ///     or from a snooze waking on this pass, replaces it.
     public static func project(
         threads: some Sequence<NotificationThread>,
         reviewRequests: [NotificationThread] = [],
         reminders: [InboxItem] = [],
         facts: (ItemID) -> SubjectFacts?,
         state: LocalState,
+        remembered: [ItemID: Resurfacing] = [:],
         now: Date
     ) -> InboxSnapshot {
         var snapshot = InboxSnapshot()
@@ -162,6 +166,7 @@ public enum InboxProjection {
                 continue
             }
 
+            if item.resurfacing == nil { item.resurfacing = remembered[id] }
             snapshot.splits[classification.split, default: []].append(item)
         }
 
@@ -176,5 +181,31 @@ public enum InboxProjection {
     private static func newestFirst(_ lhs: InboxItem, _ rhs: InboxItem) -> Bool {
         if lhs.thread.updatedAt != rhs.thread.updatedAt { return lhs.thread.updatedAt > rhs.thread.updatedAt }
         return lhs.id > rhs.id
+    }
+}
+
+extension InboxItem {
+    /// "open pull request, checks failing, by dependabot (bot)", for VoiceOver.
+    public func spokenState(facts: SubjectFacts?) -> String {
+        guard let facts else { return "" }
+        var parts: [String] = []
+        let kind = thread.kind == .pullRequest ? "pull request" : "issue"
+        switch facts.state {
+        case .open: parts.append(facts.isDraft ? "draft \(kind)" : facts.isInMergeQueue ? "\(kind) in the merge queue" : "open \(kind)")
+        case .merged: parts.append("merged \(kind)")
+        case .closed: parts.append(facts.closedReason == .notPlanned ? "closed as not planned" : "closed \(kind)")
+        }
+        switch facts.checks {
+        case .failure: parts.append("checks failing")
+        case .pending: parts.append("checks running")
+        case .success, nil: break
+        }
+        if facts.reviewDecision == .approved { parts.append("approved") }
+        if facts.reviewDecision == .changesRequested { parts.append("changes requested") }
+        if let author = facts.author {
+            let kind = classification.actorKind.flatMap { $0 == .human ? nil : $0.title.lowercased() }
+            parts.append("by \(author.login)" + (kind.map { " (\($0))" } ?? ""))
+        }
+        return parts.joined(separator: ", ")
     }
 }

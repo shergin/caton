@@ -97,4 +97,20 @@ struct FollowUpTests {
     @Test func a_pull_request_not_loaded_yet_is_still_reminded_about() {
         #expect(followUp.outcome(lastResponse: nil, now: reference.addingTimeInterval(3600)) == .due)
     }
+
+    @Test func resolve_keeps_a_due_reminder_and_drops_one_that_is_answered_or_gone() {
+        let due = FollowUps.Known(id: "due", followUp: followUp, lastResponse: nil, isGone: false)
+        let waiting = FollowUps.Known(id: "wait", followUp: followUp, lastResponse: nil, isGone: false)
+        let answered = FollowUps.Known(id: "done", followUp: followUp, lastResponse: reference, isGone: false)
+        let gone = FollowUps.Known(id: "gone", followUp: followUp, lastResponse: nil, isGone: true)
+        let now = reference.addingTimeInterval(3600)
+        let resolution = FollowUps.resolve([due, answered, gone], now: now)
+        #expect(resolution.due.map(\.id) == [.followUp("due")])
+        #expect(resolution.due.first?.classification.split == .needsMe)
+        #expect(resolution.due.first?.resurfacing == .noActivity)
+        #expect(Set(resolution.drop) == ["done", "gone"])
+        let still = FollowUps.resolve([waiting], now: reference)
+        #expect(still.due.isEmpty)
+        #expect(still.drop.isEmpty)
+    }
 }

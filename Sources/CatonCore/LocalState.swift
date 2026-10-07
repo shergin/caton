@@ -184,6 +184,35 @@ public struct LocalState: Codable, Hashable, Sendable {
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
+    /// Records rule clears. When `syncToGitHub` is set they wait in the queue
+    /// and are marked done after the grace window; otherwise they are
+    /// dismissals on this Mac only, until the user opts in.
+    public mutating func applyRuleClears(_ clears: [AutoClear], syncToGitHub: Bool, now: Date, grace: TimeInterval) {
+        count(byRules: clears.count, now: now)
+        let byRule = Dictionary(grouping: clears, by: \.rule)
+        for (rule, clears) in byRule {
+            if syncToGitHub {
+                let batch = queue.enqueue(.done, clears.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: $0.subjectNodeID) }, rule: rule, now: now, grace: grace)
+                self.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
+            } else {
+                let batch = UUID()
+                for clear in clears {
+                    dismissals[clear.id] = Dismissal(cause: .rule(rule), activity: clear.thread.updatedAt, at: now)
+                }
+                self.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
+            }
+        }
+    }
+
+    /// Drops read marks the feed now agrees with. A mark stays only while the
+    /// thread is still unread at the activity the mark covers.
+    public mutating func reconcileReads(with threads: [String: NotificationThread]) {
+        readMarks = readMarks.filter { id, mark in
+            guard case .thread(let threadID) = id, let thread = threads[threadID] else { return false }
+            return thread.isUnread && thread.updatedAt <= mark
+        }
+    }
+
     /// Drops what no longer matters: old Cleared entries, and dismissals,
     /// marks and exemptions for threads the feed no longer returns.
     public mutating func prune(liveIDs: Set<ItemID>, now: Date) {

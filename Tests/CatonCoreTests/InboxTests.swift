@@ -64,8 +64,14 @@ struct ActionQueueTests {
 }
 
 struct InboxProjectionTests {
-    func project(_ threads: [NotificationThread], facts: [String: SubjectFacts] = [:], state: LocalState = LocalState(), now: Date = reference) -> InboxSnapshot {
-        InboxProjection.project(threads: threads, facts: { facts[$0.key] }, state: state, now: now)
+    func project(
+        _ threads: [NotificationThread],
+        facts: [String: SubjectFacts] = [:],
+        state: LocalState = LocalState(),
+        remembered: [ItemID: Resurfacing] = [:],
+        now: Date = reference
+    ) -> InboxSnapshot {
+        InboxProjection.project(threads: threads, facts: { facts[$0.key] }, state: state, remembered: remembered, now: now)
     }
 
     @Test func threads_land_in_their_splits_newest_first() {
@@ -178,6 +184,69 @@ struct InboxProjectionTests {
         #expect(snapshot.count(.feed) == 0)
         #expect(snapshot.count(.needsMe) == 1)
     }
+
+    @Test func a_remembered_note_shows_until_a_fresher_reason_replaces_it() {
+        let snapshot = project([makeThread(id: "1", reason: .mention)], remembered: ["1": .snoozeEnded])
+        #expect(snapshot.items(in: .needsMe).first?.resurfacing == .snoozeEnded)
+        var state = LocalState()
+        state.dismissals["1"] = Dismissal(cause: .done, activity: reference.addingTimeInterval(-10), at: reference.addingTimeInterval(-10))
+        let back = project([makeThread(id: "1", reason: .mention)], state: state, remembered: ["1": .snoozeEnded])
+        #expect(back.items(in: .needsMe).first?.resurfacing == .activity)
+    }
+}
+
+struct InboxFeedTests {
+    let window: TimeInterval = InboxFeed.recentWindow
+
+    @Test func an_unread_poll_marks_threads_missing_from_it_as_read() {
+        let merged = InboxFeed.merge(
+            ["1": makeThread(id: "1", unread: true), "2": makeThread(id: "2", unread: true)],
+            unread: .changed([makeThread(id: "1", unread: true)]),
+            recent: .notModified,
+            now: reference,
+            recentWindow: window
+        )
+        #expect(merged.changed)
+        #expect(merged.threads["1"]?.isUnread == true)
+        #expect(merged.threads["2"]?.isUnread == false)
+    }
+
+    @Test func a_newer_unread_copy_wins_over_an_older_read_one() {
+        let held = ["1": makeThread(id: "1", unread: true, updatedAt: reference.addingTimeInterval(10))]
+        let merged = InboxFeed.merge(
+            held,
+            unread: .notModified,
+            recent: .changed([makeThread(id: "1", unread: false, updatedAt: reference)]),
+            now: reference,
+            recentWindow: window
+        )
+        #expect(merged.threads["1"]?.isUnread == true)
+        #expect(merged.threads["1"]?.updatedAt == reference.addingTimeInterval(10))
+    }
+
+    @Test func an_unchanged_poll_leaves_the_feed_alone() {
+        let pastTheHorizon = reference.addingTimeInterval(-TimeInterval(InboxFeed.retainedWindows + 1) * window)
+        let held = ["1": makeThread(id: "1", unread: false, updatedAt: pastTheHorizon)]
+        let merged = InboxFeed.merge(held, unread: .notModified, recent: .notModified, now: reference, recentWindow: window)
+        #expect(!merged.changed)
+        #expect(Set(merged.threads.keys) == ["1"])
+    }
+
+    @Test func read_threads_older_than_the_horizon_are_forgotten() {
+        let pastTheHorizon = reference.addingTimeInterval(-TimeInterval(InboxFeed.retainedWindows + 1) * window)
+        let merged = InboxFeed.merge(
+            [
+                "1": makeThread(id: "1", unread: false, updatedAt: pastTheHorizon),
+                "2": makeThread(id: "2", unread: false, updatedAt: reference.addingTimeInterval(-window)),
+                "3": makeThread(id: "3", unread: true, updatedAt: pastTheHorizon),
+            ],
+            unread: .changed([makeThread(id: "3", unread: true, updatedAt: pastTheHorizon)]),
+            recent: .notModified,
+            now: reference,
+            recentWindow: window
+        )
+        #expect(Set(merged.threads.keys) == ["2", "3"])
+    }
 }
 
 struct LocalStateTests {
@@ -213,5 +282,19 @@ struct LocalStateTests {
         decoder.dateDecodingStrategy = .secondsSince1970
         let state = try decoder.decode(LocalState.self, from: Data(json.utf8))
         #expect(state.snoozes["1"]?.onlyIfQuiet == false)
+    }
+
+    @Test func read_marks_the_feed_agrees_with_are_dropped() {
+        var state = LocalState()
+        state.readMarks["1"] = reference
+        state.readMarks["2"] = reference
+        state.readMarks["3"] = reference
+        state.readMarks[.reviewRequest("PR")] = reference
+        state.reconcileReads(with: [
+            "1": makeThread(id: "1", unread: false, updatedAt: reference),
+            "2": makeThread(id: "2", unread: true, updatedAt: reference),
+            "3": makeThread(id: "3", unread: true, updatedAt: reference.addingTimeInterval(1)),
+        ])
+        #expect(state.readMarks == ["2": reference])
     }
 }

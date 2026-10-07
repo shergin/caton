@@ -1,6 +1,6 @@
-import AppKit
 import Baton
 import CatonCore
+import Foundation
 import Observation
 
 /// One inbox and everything that keeps it: the feed's threads, local state
@@ -9,9 +9,11 @@ import Observation
 /// inbox, fed by made-up threads and connected to nothing. Switching
 /// accounts, or practicing, swaps the session; nothing is reset by hand.
 ///
-/// This file holds the session's life, the feed and the projection; changes
-/// to the inbox are in `Session+Changes.swift`, sending them to GitHub in
-/// `Session+Dispatch.swift`, the viewer's pull requests in
+/// This file holds the session's life, the feed and the projection. What
+/// belongs in the inbox is decided in CatonCore (`InboxFeed`,
+/// `InboxProjection`, `FollowUps`); the session applies those results.
+/// Changes to the inbox are in `Session+Changes.swift`, sending them to
+/// GitHub in `Session+Dispatch.swift`, the viewer's pull requests in
 /// `Session+PullRequests.swift`.
 @MainActor
 @Observable
@@ -36,7 +38,6 @@ final class Session {
     }
 
     static let grace: TimeInterval = 5
-    static let recentWindow: TimeInterval = 7 * 24 * 3600
 
     let viewer: Viewer
     let source: Source
@@ -227,7 +228,7 @@ final class Session {
         defer { isSyncing = false }
         do {
             let unread = try await rest.pollUnread(force: force)
-            let recent = try await rest.pollRecent(since: .now.addingTimeInterval(-Self.recentWindow), force: force)
+            let recent = try await rest.pollRecent(since: .now.addingTimeInterval(-InboxFeed.recentWindow), force: force)
             guard !Task.isCancelled else { return }
             if !merge(unread: unread, recent: recent) {
                 // Nothing new in the feed: subjects still refresh on their
@@ -257,34 +258,11 @@ final class Session {
     /// Folds a poll into the threads; returns whether anything changed.
     @discardableResult
     private func merge(unread: FeedPoll, recent: FeedPoll) -> Bool {
-        var changed = false
-        if case .changed(let unreadThreads) = unread {
-            let unreadIDs = Set(unreadThreads.map(\.id))
-            // Unread here but not in the feed: read elsewhere, or done elsewhere.
-            for (id, thread) in threads where thread.isUnread && !unreadIDs.contains(id) {
-                threads[id]?.isUnread = false
-            }
-            for thread in unreadThreads { threads[thread.id] = thread }
-            changed = true
-        }
-        if case .changed(let recentThreads) = recent {
-            for thread in recentThreads {
-                // The unread feed is authoritative for unread state when both have the thread.
-                if let existing = threads[thread.id], existing.isUnread, !thread.isUnread, existing.updatedAt > thread.updatedAt { continue }
-                threads[thread.id] = thread
-            }
-            changed = true
-        }
-        guard changed else { return false }
-        // Forget read threads nobody will see again.
-        let horizon = Date.now.addingTimeInterval(-4 * Self.recentWindow)
-        threads = threads.filter { $0.value.isUnread || $0.value.updatedAt > horizon }
+        let merged = InboxFeed.merge(threads, unread: unread, recent: recent, now: .now)
+        guard merged.changed else { return false }
+        threads = merged.threads
         state.prune(liveIDs: liveIDs, now: .now)
-        // Read marks the feed now agrees with are no longer needed.
-        state.readMarks = state.readMarks.filter { id, mark in
-            guard case .thread(let threadID) = id, let thread = threads[threadID] else { return false }
-            return thread.isUnread && thread.updatedAt <= mark
-        }
+        state.reconcileReads(with: threads)
         subjects?.sync(Array(threads.values))
         recompute()
         return true
@@ -322,29 +300,21 @@ final class Session {
         }
     }
 
-    /// Classifies the inbox again: rules clear what they clear, snoozes wake,
-    /// and the snapshot every view reads is replaced.
+    /// Classifies the inbox again. Finished reminders, rule clears and woken
+    /// snoozes come back as data; this applies them, and projects once more
+    /// when a clear changed membership.
     func recompute() {
         let now = Date.now
         let reminders = dueReminders(now: now)
-        let project = { [unowned self] in
-            InboxProjection.project(threads: threads.values, reviewRequests: reviewRequests, reminders: reminders, facts: { self.facts(for: $0) }, state: state, now: now)
-        }
-        var next = project()
+        for id in reminders.drop { state.followUps[id] = nil }
+        var next = projected(reminders: reminders.due, now: now)
         if !next.autoClears.isEmpty {
-            applyRuleClears(next.autoClears, now: now)
-            next = project()
+            state.applyRuleClears(next.autoClears, syncToGitHub: syncsRuleClears(), now: now, grace: Self.grace)
+            next = projected(reminders: reminders.due, now: now)
         }
         for (id, why) in next.wokenSnoozes {
             state.snoozes[id] = nil
             wokenSnoozes[id] = why
-        }
-        for split in Split.allCases {
-            guard var items = next.splits[split] else { continue }
-            for index in items.indices where items[index].resurfacing == nil {
-                items[index].resurfacing = wokenSnoozes[items[index].id]
-            }
-            next.splits[split] = items
         }
         let left = Set(snapshot.items(in: .needsMe).map(\.id)).subtracting(next.items(in: .needsMe).map(\.id))
         snapshot = next
@@ -352,22 +322,16 @@ final class Session {
         onChange?(left)
     }
 
-    private func applyRuleClears(_ clears: [AutoClear], now: Date) {
-        state.count(byRules: clears.count, now: now)
-        let byRule = Dictionary(grouping: clears, by: \.rule)
-        for (rule, clears) in byRule {
-            if syncsRuleClears() {
-                let batch = state.queue.enqueue(.done, clears.map { .init(item: $0.id, activity: $0.thread.updatedAt, subjectNodeID: $0.subjectNodeID) }, rule: rule, now: now, grace: Self.grace)
-                state.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
-            } else {
-                // Local only until the user lets rules mark threads done on GitHub.
-                let batch = UUID()
-                for clear in clears {
-                    state.dismissals[clear.id] = Dismissal(cause: .rule(rule), activity: clear.thread.updatedAt, at: now)
-                }
-                state.cleared += clears.map { ClearedEntry(batch: batch, thread: $0.thread, rule: rule, at: now) }
-            }
-        }
+    private func projected(reminders: [InboxItem], now: Date) -> InboxSnapshot {
+        InboxProjection.project(
+            threads: threads.values,
+            reviewRequests: reviewRequests,
+            reminders: reminders,
+            facts: { [unowned self] in facts(for: $0) },
+            state: state,
+            remembered: wokenSnoozes,
+            now: now
+        )
     }
 
     // MARK: Persistence
@@ -391,29 +355,5 @@ final class Session {
 
     func lenses(for id: ItemID) -> SubjectStore.Lenses {
         reminderLenses(id) ?? subjects?.lenses(for: id) ?? SubjectStore.Lenses()
-    }
-
-    /// "open pull request, checks failing, by dependabot (bot)", for VoiceOver.
-    func spokenState(for item: InboxItem) -> String {
-        guard let facts = facts(for: item.id) else { return "" }
-        var parts: [String] = []
-        let kind = item.thread.kind == .pullRequest ? "pull request" : "issue"
-        switch facts.state {
-        case .open: parts.append(facts.isDraft ? "draft \(kind)" : facts.isInMergeQueue ? "\(kind) in the merge queue" : "open \(kind)")
-        case .merged: parts.append("merged \(kind)")
-        case .closed: parts.append(facts.closedReason == .notPlanned ? "closed as not planned" : "closed \(kind)")
-        }
-        switch facts.checks {
-        case .failure: parts.append("checks failing")
-        case .pending: parts.append("checks running")
-        case .success, nil: break
-        }
-        if facts.reviewDecision == .approved { parts.append("approved") }
-        if facts.reviewDecision == .changesRequested { parts.append("changes requested") }
-        if let author = facts.author {
-            let kind = item.classification.actorKind.flatMap { $0 == .human ? nil : $0.title.lowercased() }
-            parts.append("by \(author.login)" + (kind.map { " (\($0))" } ?? ""))
-        }
-        return parts.joined(separator: ", ")
     }
 }

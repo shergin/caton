@@ -112,4 +112,13 @@ public enum ActorKind: String, Codable, Sendable {
     case bot
     case aiReviewer
     case agent
+
+    public var title: String {
+        switch self {
+        case .human: "person"
+        case .bot: "bot"
+        case .aiReviewer: "AI reviewer"
+        case .agent: "agent"
+        }
+    }
 }

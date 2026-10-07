@@ -67,7 +67,7 @@ struct InboxList: View {
                                 showsWaiting: waiting,
                                 showsRepository: !model.panel.groupByRepository || acrossRepositories.contains(item.id),
                                 lenses: model.lenses(for: item.id),
-                                spokenState: model.spokenState(for: item),
+                                spokenState: item.spokenState(facts: model.facts(for: item.id)),
                                 fallback: model.isPractice ? model.facts(for: item.id) : nil,
                                 onOpen: {
                                     model.panel.select(row.id)

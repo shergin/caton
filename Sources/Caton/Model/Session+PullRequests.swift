@@ -74,52 +74,34 @@ extension Session {
         recompute()
     }
 
-    /// Reminders that came due unanswered, as Needs me rows. A reminder whose
-    /// pull request got an answer is dropped; one on a pull request that is
-    /// no longer open is too, once the whole list is known.
-    func dueReminders(now: Date) -> [InboxItem] {
-        guard !state.followUps.isEmpty, !isPractice else { return [] }
-        var loaded: [String: MyPullRequests.Node]?
+    /// Reminders that came due, and those that have finished. The session
+    /// forgets the finished ones; the due ones join Needs me as they are.
+    func dueReminders(now: Date) -> FollowUps.Resolution {
+        guard !state.followUps.isEmpty, !isPractice else { return FollowUps.Resolution() }
+        var loadedIDs: Set<String>?
+        var lastResponse: [String: Date] = [:]
         var complete = false
         if let handle = subjects?.myPullRequests, case .ready(let data) = handle.phase {
             let list = data.viewer.myPullRequestList
-            loaded = Dictionary(list.pullRequests.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            var ids: Set<String> = []
+            for node in list.pullRequests.nodes {
+                ids.insert(node.id)
+                if let response = MyPullRequests.status(node.pullRequestStanding).lastResponse(excluding: viewer.login) {
+                    lastResponse[node.id] = response
+                }
+            }
+            loadedIDs = ids
             complete = !list.pullRequests.hasNext
         }
-        var items: [InboxItem] = []
-        for (id, followUp) in state.followUps {
-            let node = loaded?[id]
-            if node == nil, complete {
-                state.followUps[id] = nil
-                continue
-            }
-            let lastResponse = node.flatMap { MyPullRequests.status($0.pullRequestStanding).lastResponse(excluding: viewer.login) }
-            switch followUp.outcome(lastResponse: lastResponse, now: now) {
-            case .waiting:
-                continue
-            case .answered:
-                state.followUps[id] = nil
-            case .due:
-                let thread = NotificationThread(
-                    id: id,
-                    repository: followUp.repository,
-                    kind: .pullRequest,
-                    number: followUp.number,
-                    title: followUp.title,
-                    reason: .author,
-                    isUnread: true,
-                    updatedAt: followUp.until,
-                    webURL: followUp.url
-                )
-                let classification = Classification(
-                    split: .needsMe,
-                    badge: .followUp,
-                    because: "You asked to be reminded if nobody had reviewed or commented by \(followUp.until.formatted(date: .abbreviated, time: .shortened)), and nobody has."
-                )
-                items.append(InboxItem(id: .followUp(id), thread: thread, classification: classification, isUnread: true, resurfacing: .noActivity))
-            }
+        let known = state.followUps.map { id, followUp in
+            FollowUps.Known(
+                id: id,
+                followUp: followUp,
+                lastResponse: loadedIDs == nil ? nil : lastResponse[id],
+                isGone: loadedIDs != nil && complete && loadedIDs?.contains(id) != true
+            )
         }
-        return items
+        return FollowUps.resolve(known, now: now)
     }
 
     /// The glyph for a reminder row: the inbox's own fragment, from My PRs.
