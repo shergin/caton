@@ -12,6 +12,16 @@ the number of things waiting on you.
 
 The product thinking is in [PRD.md](PRD.md).
 
+## Install
+
+```sh
+brew install --cask shergin/tap/caton
+```
+
+Caton needs macOS 26 on Apple silicon. It is not notarized, so macOS blocks
+its first launch: open System Settings › Privacy & Security and click Open
+Anyway, once. Updates install with `brew upgrade --cask caton`.
+
 ## How it is built
 
 [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full map: the layers, the
@@ -44,6 +54,8 @@ session, panel and command table, and where Baton begins and ends.
   optimistic answer, the server's, and a refusal taken back.
 
 ## Running
+
+The commands below build Caton from a checkout.
 
 Caton uses [Baton 0.15](https://github.com/shergin/baton/releases/tag/v0.15.0).
 SwiftPM downloads the package and its matching prebuilt GraphQL compiler;
