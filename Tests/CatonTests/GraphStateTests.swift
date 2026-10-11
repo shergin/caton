@@ -28,10 +28,10 @@ struct GraphStateTests {
     @Test func a_response_from_another_operation_reclassifies_the_inbox() async throws {
         let graph = Baton.Environment(transport: WriteTests.github())
         let operation = IssueSubjectQuery(owner: "acme", name: "web", number: 7)
-        try await graph.commitPayload(operation, Data(#"""
+        try await graph.commitPayload(operation, Payload(Data(#"""
             {"data":{"repository":{"id":"R_web","issue":{"id":"I_7","state":"OPEN","stateReason":null,
             "viewerDidAuthor":false,"author":null,"comments":{"nodes":[]}}}}}
-            """#.utf8))
+            """#.utf8)))
         let subjects = SubjectStore(environment: graph, viewerID: "U_me", fetchedActivity: [:])
         let session = Session(
             viewer: Viewer(login: "me", nodeID: "U_me", scopes: ["repo"]),
@@ -47,9 +47,9 @@ struct GraphStateTests {
         #expect(session.state.dismissals[.thread("T_7")] == nil)
         #expect(session.facts(for: .thread("T_7"))?.state == .open)
 
-        try await graph.commitPayload(IssueRefreshQuery(ids: ["I_7"]), Data(#"""
+        try await graph.commitPayload(IssueRefreshQuery(ids: ["I_7"]), Payload(Data(#"""
             {"data":{"nodes":[{"__typename":"Issue","id":"I_7","state":"CLOSED","stateReason":"COMPLETED"}]}}
-            """#.utf8))
+            """#.utf8)))
         #expect(await wait(until: { session.state.dismissals[.thread("T_7")] != nil }))
         await session.end()
     }
@@ -60,11 +60,11 @@ struct GraphStateTests {
         test.model.remind("PR_7", until: .now.addingTimeInterval(-1))
         #expect(test.model.inbox?.followUp(for: "PR_7") != nil)
         let commentAt = Date.now.formatted(.iso8601)
-        try await test.environment.commitPayload(PeekPullRequestQuery(owner: "acme", name: "web", number: 7), Data("""
+        try await test.environment.commitPayload(PeekPullRequestQuery(owner: "acme", name: "web", number: 7), Payload(Data("""
             {"data":{"repository":{"id":"R_web","pullRequest":{"id":"PR_7","comments":{"nodes":[{
             "id":"C_1","author":{"__typename":"User","id":"U_alex","login":"alex"},
             "bodyText":"Ready","createdAt":"\(commentAt)"}]}}}}}
-            """.utf8))
+            """.utf8)))
         let node = try #require(test.model.myPullRequestNode("PR_7"))
         #expect(MyPullRequests.status(node.pullRequestStanding).lastComment?.login == "alex")
         #expect(await wait(until: { test.model.inbox?.followUp(for: "PR_7") == nil }))
@@ -74,7 +74,7 @@ struct GraphStateTests {
 
     @Test func a_failed_refresh_keeps_cached_rows_and_exposes_its_failure() async throws {
         let graph = Baton.Environment(transport: RecordedTransport())
-        try await graph.commitPayload(MyPullRequestsQuery(), ImageTests.response)
+        try await graph.commitPayload(MyPullRequestsQuery(), Payload(ImageTests.response))
         let handle = graph.handle(for: MyPullRequestsQuery(), fetchPolicy: .storeOnly)
         let retention = handle.retain()
         await #expect(throws: (any Error).self) { try await handle.refetch() }
@@ -92,7 +92,7 @@ struct GraphStateTests {
             .replacingOccurrences(of: "2026-10-01T10:00:00Z", with: "not-a-date").utf8)
         let graph = Baton.Environment(transport: RecordedTransport())
         graph.log = nil
-        try await graph.commitPayload(MyPullRequestsQuery(), response)
+        try await graph.commitPayload(MyPullRequestsQuery(), Payload(response))
         let handle = graph.handle(for: MyPullRequestsQuery(), fetchPolicy: .storeOnly)
         guard case .ready(let data) = handle.phase else { Issue.record("Expected cached data"); return }
         let node = try #require(data.viewer.myPullRequestList.pullRequests.nodes.first)

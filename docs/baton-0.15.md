@@ -1,11 +1,12 @@
-# Baton 0.8 in Caton
+# Baton 0.15 in Caton
 
-Caton depends on the published 0.8 series, with 0.8.0 locked in
+Caton depends on the published 0.15 series, with 0.15.0 locked in
 `Package.resolved`. SwiftPM downloads the matching compiler artifact. The
 build plugin produces generated Swift and `Baton.report.json` under
 `.build/plugins/outputs/caton/Caton/destination/BatonPlugin/Generated/`.
-The report lists Caton's operations and fragments and their compiled text;
-it is not bundled into the app.
+The report lists each operation and fragment, its compiled text, and its
+lens: every accessor's name, the response key it reads, and its shape. It
+is not bundled into the app.
 
 ## Adopted
 
@@ -28,10 +29,12 @@ it is not bundled into the app.
   Opening the panel revalidates retained queries. `fetch.failure` exposes a
   failed refresh beside usable cached data and a retry button.
 - Mutation payloads use `@catch` so a partial GraphQL refusal cannot
-  become a success toast. Nudge's optimistic timestamp lives in the client
-  field `catonNudgedAt`, declared in `client-schema.graphql`. The server's
-  timeline is untouched until its answer arrives; rejection removes the
-  timestamp, and optimistic values never reach the disk image.
+  become a success toast. An optimistic response is a `Payload`
+  (`optimistic.payload`), and `commitPayload` takes one too. Nudge's
+  optimistic timestamp lives in the client field `catonNudgedAt`, declared
+  in `client-schema.graphql`. The server's timeline is untouched until its
+  answer arrives; rejection removes the timestamp, and optimistic values
+  never reach the disk image.
 - `Environment.log` routes diagnostic events to macOS logging under
   `dev.caton.Caton`, category `GraphQL`. Debug builds add a Store tab to
   Settings using `BatonInspector`, including its export for fixture creation.
@@ -39,10 +42,11 @@ it is not bundled into the app.
   `commitPayload` for cached launch, late responses, optimistic writes,
   rollback, malformed scalar data, and changes arriving through other views.
 
-The release also brings compact operation text, smaller generated plans,
-bounded session keys, and persistence fixes automatically. Caton's existing
-discovery by repository and number, followed by batched `nodes(ids:)`
-refreshes, continues to use Baton's shared records.
+A response is parsed off the main actor, and the store is entered once, for
+the commit. Opening an image no longer waits on a file that image is
+creating. The on-disk format is still 6, so an image written by 0.8 opens.
+Caton's discovery by repository and number, followed by batched
+`nodes(ids:)` refreshes, continues to use Baton's shared records.
 
 ## Deliberately unused
 
@@ -50,5 +54,5 @@ GitHub's endpoint does not provide the subscriptions, persisted document
 registration, or incremental delivery these features require. GitHub node
 IDs already supply identity, and Caton's per-account image should keep its
 subjects and review searches for launch, so custom identity and transient
-cache exclusions add no benefit. The release's later `@inline` compiler
-work is still unreleased; facts continue to be read through typed lenses.
+cache exclusions add no benefit. `@inline` is unused: the classifier reads
+facts through typed lenses and copies them into `SubjectFacts`.

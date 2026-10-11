@@ -1,13 +1,13 @@
 {
-  "originHash" : "3e017301d688b1b28ce41bbcffd6ca1a1f6977844930bf17388c74eace4d71f9",
+  "originHash" : "8c60b1702273bbdc32009b1dd02917a8dbaeffd5d55808e471ad7da83974a0fb",
   "pins" : [
     {
       "identity" : "baton",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shergin/baton.git",
       "state" : {
-        "revision" : "c6f8a2c035db1202ff64c46a43a2039b46b40986",
-        "version" : "0.8.0"
+        "revision" : "a4dc045ac3b56494e818bbb63d30a94ddf7857e5",
+        "version" : "0.15.0"
       }
     },
     {

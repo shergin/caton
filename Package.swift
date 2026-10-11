@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "Caton", targets: ["Caton"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/shergin/baton.git", .upToNextMinor(from: "0.8.0")),
+        .package(url: "https://github.com/shergin/baton.git", .upToNextMinor(from: "0.15.0")),
     ],
     targets: [
         .target(

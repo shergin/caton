@@ -201,7 +201,7 @@ extension Session {
                     id: pullRequestID,
                     catonNudgedAt: now
                 )))
-                let result = try await graph.mutate(NudgeReviewersMutation(input: input), optimistic: optimistic.variable)
+                let result = try await graph.mutate(NudgeReviewersMutation(input: input), optimistic: optimistic.payload)
                 guard !graph.ended else { return }
                 guard try result.requestReviews.get()?.pullRequest != nil else { throw GitHubError.invalidResponse }
                 onWrite?("Asked \(nudge.summary) again on \(reference)")
@@ -209,7 +209,7 @@ extension Session {
                 let optimistic = ReadyForReviewMutation.OptimisticResponse(markPullRequestReadyForReview: .init(pullRequest: .init(id: pullRequestID, isDraft: false)))
                 let result = try await graph.mutate(
                     ReadyForReviewMutation(input: MarkPullRequestReadyForReviewInput(pullRequestId: pullRequestID)),
-                    optimistic: optimistic.variable
+                    optimistic: optimistic.payload
                 )
                 guard !graph.ended else { return }
                 guard try result.markPullRequestReadyForReview.get()?.pullRequest != nil else { throw GitHubError.invalidResponse }

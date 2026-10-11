@@ -1,6 +1,6 @@
 # Working in Caton
 
-Caton is a demo app built on Baton 0.8, pinned by `Package.resolved`. Read `PRD.md` for what it is
+Caton is a demo app built on Baton 0.15, pinned by `Package.resolved`. Read `PRD.md` for what it is
 for. The research behind it is kept locally in `research/`, outside git.
 
 ## Build and test
