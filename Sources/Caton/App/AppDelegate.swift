@@ -37,15 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["CATON_OPEN_PANEL"] == "1" {
             statusItem.showPanel()
         }
-        if let section = ProcessInfo.processInfo.environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) {
-            model.panel.show(.split(section))
-        }
-        if ProcessInfo.processInfo.environment["CATON_SECTION"] == "prs" { model.panel.show(.myPullRequests) }
         let environment = ProcessInfo.processInfo.environment
         if environment["CATON_SHOW_SETTINGS"] == "1" { settings.show() }
-        if environment["CATON_PRACTICE"] == "1" {
-            model.enterPractice()
-            if let section = environment["CATON_SECTION"].flatMap(Int.init).flatMap(Split.init(rawValue:)) { model.panel.show(.split(section)) }
+        // Practice swaps the session, which starts the panel over, so the
+        // section comes after it.
+        if environment["CATON_PRACTICE"] == "1" { model.enterPractice() }
+        switch environment["CATON_SECTION"] {
+        case "prs": model.panel.show(.myPullRequests)
+        case "snoozed": model.panel.show(.snoozed)
+        case "later": model.panel.show(.later)
+        case "cleared": model.panel.show(.cleared)
+        case let value?:
+            if let section = Int(value).flatMap(Split.init(rawValue:)) { model.panel.show(.split(section)) }
+        case nil: break
         }
         if let path = environment["CATON_SNAPSHOT"] {
             Task {
@@ -59,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "tips": model.panel.overlay = .tips
                 case "zero": model.panel.overlay = .zero
                 case "none": model.panel.overlay = .none
+                case "search": model.panel.isSearching = true
                 case "nudge":
                     model.panel.selectFirst()
                     model.nudge()

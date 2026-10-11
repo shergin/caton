@@ -16,14 +16,11 @@ struct PeekView: View {
                 PeekIssue(peek: PeekIssueQuery(owner: item.thread.repository.owner, name: item.thread.repository.name, number: number))
             } else {
                 Text("Nothing to peek at for a \(item.thread.kind.title.lowercased()). Press ⏎ to open it.")
-                    .font(.system(size: 12))
+                    .font(Theme.Font.body)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(14)
-        .frame(width: 380, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .shadow(radius: 10)
+        .card(width: 380)
     }
 }
 
@@ -66,7 +63,7 @@ struct PeekPullRequest: View {
         case .loading:
             ProgressView().controlSize(.small).frame(maxWidth: .infinity)
         case .failed(let error):
-            Text(String(describing: error)).font(.system(size: 11)).foregroundStyle(.orange).lineLimit(3)
+            Text(String(describing: error)).font(Theme.Font.detail).foregroundStyle(.orange).lineLimit(3)
         case .ready(let data):
             if let pullRequest = data.repository?.pullRequest {
                 VStack(alignment: .leading, spacing: 8) {
@@ -75,7 +72,7 @@ struct PeekPullRequest: View {
                     PeekBody(text: pullRequest.bodyText)
                     if let reviews = pullRequest.latestReviews?.nodes, !reviews.isEmpty {
                         Text(reviews.map { "\($0.author?.login ?? "ghost") \($0.state.scalarText.lowercased().replacingOccurrences(of: "_", with: " "))" }.joined(separator: " · "))
-                            .font(.system(size: 11))
+                            .font(Theme.Font.detail)
                             .foregroundStyle(.secondary)
                     }
                     if let comment = pullRequest.comments.nodes?.last {
@@ -84,7 +81,7 @@ struct PeekPullRequest: View {
                     PeekFooter()
                 }
             } else {
-                Text("This pull request is gone or out of reach.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("This pull request is gone or out of reach.").font(Theme.Font.body).foregroundStyle(.secondary)
             }
         }
     }
@@ -113,7 +110,7 @@ struct PeekIssue: View {
         case .loading:
             ProgressView().controlSize(.small).frame(maxWidth: .infinity)
         case .failed(let error):
-            Text(String(describing: error)).font(.system(size: 11)).foregroundStyle(.orange).lineLimit(3)
+            Text(String(describing: error)).font(Theme.Font.detail).foregroundStyle(.orange).lineLimit(3)
         case .ready(let data):
             if let issue = data.repository?.issue {
                 VStack(alignment: .leading, spacing: 8) {
@@ -126,7 +123,7 @@ struct PeekIssue: View {
                     PeekFooter()
                 }
             } else {
-                Text("This issue is gone or out of reach.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("This issue is gone or out of reach.").font(Theme.Font.body).foregroundStyle(.secondary)
             }
         }
     }
@@ -138,8 +135,8 @@ struct PeekHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-            if let author { Text("by \(author)").font(.system(size: 11)).foregroundStyle(.secondary) }
+            Text(title).font(Theme.Font.titleEmphasized).lineLimit(2)
+            if let author { Text("by \(author)").font(Theme.Font.detail).foregroundStyle(.secondary) }
         }
     }
 }
@@ -150,7 +147,7 @@ struct PeekBody: View {
     var body: some View {
         if !text.isEmpty {
             Text(text.count > 400 ? String(text.prefix(400)) + "…" : text)
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 .lineLimit(8)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -167,14 +164,14 @@ struct PeekComment: View {
         VStack(alignment: .leading, spacing: 3) {
             Divider()
             HStack {
-                Text("Latest of \(total) comments · \(author ?? "ghost")").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                Text("Latest of \(total) comments · \(author ?? "ghost")").font(Theme.Font.sectionHeader).foregroundStyle(.secondary)
                 Spacer()
                 if let date = createdAt {
-                    Text(Age.short(Date.now.timeIntervalSince(date))).font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text(Age.short(Date.now.timeIntervalSince(date))).font(Theme.Font.caption).foregroundStyle(.secondary)
                 }
             }
             Text(text.count > 300 ? String(text.prefix(300)) + "…" : text)
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 .lineLimit(6)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -183,6 +180,6 @@ struct PeekComment: View {
 
 struct PeekFooter: View {
     var body: some View {
-        Text("⏎ open · e done · any other key closes").font(.system(size: 10)).foregroundStyle(.tertiary)
+        CardNote("⏎ open · e done · any other key closes")
     }
 }

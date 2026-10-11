@@ -29,27 +29,27 @@ struct SignInView: View {
                 }
             }
             Text("The GitHub inbox that shows only what needs you. Sign in to read your notifications; your token stays on this Mac.")
-                .font(.system(size: 12))
+                .font(Theme.Font.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if model.account == .connecting {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Signing in…").font(.system(size: 12))
+                    Text("Signing in…").font(Theme.Font.body)
                 }
             } else if case .waiting(let code, let url) = model.accounts.deviceSignIn {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Enter this code on GitHub (copied):").font(.system(size: 12))
+                    Text("Enter this code on GitHub (copied):").font(Theme.Font.body)
                     Text(code).font(.system(size: 24, weight: .semibold, design: .monospaced)).textSelection(.enabled)
                     HStack {
-                        Link("Open \(url.host() ?? "github.com")", destination: url).font(.system(size: 12))
+                        Link("Open \(url.host() ?? "github.com")", destination: url).font(Theme.Font.body)
                         Spacer()
                         Button("Cancel") { model.accounts.cancelSignIn() }
                     }
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("Waiting for approval…").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("Waiting for approval…").font(Theme.Font.detail).foregroundStyle(.secondary)
                     }
                 }
             } else {
@@ -57,11 +57,11 @@ struct SignInView: View {
             }
 
             if let error = model.accounts.signInError {
-                Text(error).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Text(error).font(Theme.Font.detail).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text("Caton reads notifications with a classic-scope token. GitHub does not let fine-grained tokens or GitHub App tokens read notifications.")
-                .font(.system(size: 10))
+                .font(Theme.Font.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -78,7 +78,7 @@ struct SignInView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             Text(model.preferences.access.explanation)
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if host.isDotCom {
@@ -103,7 +103,7 @@ struct SignInView: View {
             }
 
             Divider().padding(.vertical, 2)
-            Text("Or paste a classic token").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("Or paste a classic token").font(Theme.Font.detail).foregroundStyle(.secondary)
             HStack {
                 SecureField("ghp_…", text: $token)
                     .textFieldStyle(.roundedBorder)
@@ -112,7 +112,7 @@ struct SignInView: View {
                     .disabled(token.isEmpty)
             }
             Link("Create a token with the right scopes →", destination: tokenURL)
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
             DisclosureGroup("GitHub Enterprise", isExpanded: $showsEnterprise) {
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("github.acme.com or acme.ghe.com", text: $enterpriseHost)
@@ -120,12 +120,12 @@ struct SignInView: View {
                     Text(enterpriseHost.isEmpty || GitHubHost(enterpriseHost) != nil
                         ? "Sign in with a classic token from that host, or the GitHub CLI signed in to it."
                         : "That doesn't look like a host name.")
-                        .font(.system(size: 10))
+                        .font(Theme.Font.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 4)
             }
-            .font(.system(size: 11))
+            .font(Theme.Font.detail)
             Divider().padding(.vertical, 2)
             if !model.accounts.isAdding {
                 Button {
@@ -134,24 +134,9 @@ struct SignInView: View {
                     Label("Try a practice inbox first", systemImage: "graduationcap")
                 }
                 .buttonStyle(.link)
-                .font(.system(size: 12))
+                .font(Theme.Font.body)
                 .help("Made-up threads to learn the keys on; nothing reaches GitHub")
             }
-        }
-    }
-}
-
-/// The logo at a size in points.
-struct LogoImage: View {
-    let size: CGFloat
-
-    var body: some View {
-        if let logo = Assets.logo {
-            Image(nsImage: logo)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
         }
     }
 }

@@ -25,10 +25,10 @@ struct BundleRow: View {
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
                 Text(bundle.title)
-                    .font(.system(size: 13, weight: bundle.unreadCount > 0 ? .semibold : .regular))
+                    .font(bundle.unreadCount > 0 ? Theme.Font.titleEmphasized : Theme.Font.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(summary).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                Text(summary).font(Theme.Font.detail).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if isHovered {
@@ -38,14 +38,7 @@ struct BundleRow: View {
             }
         }
         .padding(.leading, 9)
-        .padding(.trailing, 7)
-        .frame(height: 40)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.3) : isHovered ? Color.primary.opacity(0.06) : .clear)
-        )
-        .padding(.horizontal, 5)
-        .contentShape(Rectangle())
+        .rowChrome(isSelected: isSelected, isHovered: isHovered, height: 42)
         .onTapGesture(perform: onToggle)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)

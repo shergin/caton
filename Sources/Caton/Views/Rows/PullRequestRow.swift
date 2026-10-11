@@ -46,9 +46,9 @@ struct MyPullRequestRow: View {
                             .lineLimit(1)
                     }
                 }
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 Text(pullRequest.title)
-                    .font(.system(size: 13))
+                    .font(Theme.Font.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -67,14 +67,7 @@ struct MyPullRequestRow: View {
                 StandingLabel(pullRequest: standing)
             }
         }
-        .padding(.trailing, 7)
-        .frame(height: 46)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.3) : isHovered ? Color.primary.opacity(0.06) : .clear)
-        )
-        .padding(.horizontal, 5)
-        .contentShape(Rectangle())
+        .rowChrome(isSelected: isSelected, isHovered: isHovered)
         .onTapGesture(perform: onOpen)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
@@ -121,7 +114,7 @@ struct StandingLabel: View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let standing = PullRequestStanding.of(MyPullRequests.status(pullRequest))
             Text(standing.summary(now: context.date))
-                .font(.system(size: 11, weight: standing.group == .yourMove ? .semibold : .regular))
+                .font(standing.group == .yourMove ? Theme.Font.detailEmphasized : Theme.Font.detail)
                 .foregroundStyle(standing.group == .yourMove ? Color.orange : Color.secondary)
                 .lineLimit(1)
                 .fixedSize()

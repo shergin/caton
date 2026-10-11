@@ -130,11 +130,10 @@ struct Command: Identifiable {
     }
 
     /// The footer's hints: the verbs worth teaching that apply to the
-    /// selection, in the table's order.
-    static func hints(in model: AppModel, limit: Int) -> [(key: String, label: String)] {
-        all.filter { $0.group == .act && $0.hint != nil && $0.isAvailable(in: model) }
-            .prefix(limit)
-            .map { ($0.bindings.first?.label ?? "", $0.hint ?? "") }
+    /// selection, in the table's order. The footer shows each one's first
+    /// key and `hint`, and runs it on a click.
+    static func hints(in model: AppModel, limit: Int) -> [Command] {
+        Array(all.filter { $0.group == .act && $0.hint != nil && $0.isAvailable(in: model) }.prefix(limit))
     }
 
     /// The keymap's lines for a group: each bound command once, and the

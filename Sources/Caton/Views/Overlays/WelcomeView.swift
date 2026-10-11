@@ -15,21 +15,21 @@ struct WelcomeView: View {
             let cleared = welcome.cleared.values.reduce(0, +)
             if cleared > 0 {
                 Text("Rules cleared \(cleared): " + Rule.allCases.compactMap { rule in welcome.cleared[rule].map { "\(rule.title.lowercased()) \($0)" } }.joined(separator: ", ") + ". They are in Cleared, where each can be restored.")
-                    .font(.system(size: 12))
+                    .font(Theme.Font.body)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Team requests, threads you follow and watched activity are in their own tabs; only Needs me counts in the menu bar.")
-                .font(.system(size: 12))
+            Text("Team requests, threads you follow and watched activity are in their own splits; only Needs me counts in the menu bar.")
+                .font(Theme.Font.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Hint(key: "e", label: "done")
-                Hint(key: "h", label: "snooze")
-                Hint(key: "⇥", label: "next tab")
-                Hint(key: "⌘K", label: "everything")
+                KeyHint(key: "e", label: "done")
+                KeyHint(key: "h", label: "snooze")
+                KeyHint(key: "⇥", label: "next split")
+                KeyHint(key: "⌘K", label: "everything")
             }
             Divider()
-            Text("Should rules also mark what they clear as done on GitHub?").font(.system(size: 12))
+            Text("Should rules also mark what they clear as done on GitHub?").font(Theme.Font.body)
             HStack {
                 Button("Keep on this Mac") { model.finishWelcome(syncRuleClears: false) }
                     .keyboardShortcut(.cancelAction)
@@ -37,10 +37,7 @@ struct WelcomeView: View {
                     .buttonStyle(.borderedProminent)
             }
         }
-        .padding(16)
-        .frame(width: 380, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 12)
+        .card(width: 380, padding: 16)
     }
 }
 

@@ -110,8 +110,7 @@ A basic native notifier is now cheap to build: there were a dozen hobby launches
                 |
                 v
 +------------------------------------------------------------------+
-| Caton                                              (spinner) [⌘K] |
-| [ Needs me 3 ]   Team 12    Following 8    Feed 41                 |  <- splits, Tab / Shift-Tab
+| ([Needs me 3] Team 12 | Following 8 | Feed 41 )     (spinner)  ⋯  |  <- splits, Tab / Shift-Tab; ⋯ the other views
 |------------------------------------------------------------------|
 | (PR) acme/web#4521                        Review · you    [CI x]  |
 |  *   Fix hydration mismatch in checkout     (av) 2h · waiting 26h |
@@ -121,12 +120,21 @@ A basic native notifier is now cheap to build: there were a dozen hobby launches
 |  *   Middleware drops search params                   (av) 1h     |
 |------------------------------------------------------------------|
 |        [ toast: Done acme/web#4521 · z to undo ]                  |
-| e done  h snooze  u unsub  ⏎ open  tab split  ⌘K actions  ? keys  |
+| [e] done  [h] snooze  [⏎] open  [⌘K] more                     ⚙  |
 +------------------------------------------------------------------+
 ```
 
+The panel is dressed as the menu a status item drops, and it keeps a
+menu's manners: no title row (a menu never names its app), the system's
+menu material and corner, one accent for what is yours. The four splits are
+a segmented control. A view that is not a split (a saved search, My PRs,
+Snoozed, Later, Cleared) shows as a title with a round button back to the
+split shown before, the way Control Center drills into a module; the `⋯`
+menu reaches those views and the saved searches. Practice and dry run are
+a tinted band across the top.
+
 - Floating, non-activating panel (about 400 x 560 pt). It appears on the active Space (including full-screen apps), closes on outside click or Esc, and keeps its state (selection, split, search) when it closes.
-- Secondary views (not splits): **Snoozed**, **Later**, **Cleared** (rule and bulk log), reachable with `g s`, `g l`, `g c` or Cmd+K.
+- Secondary views (not splits): **My PRs**, **Snoozed**, **Later**, **Cleared** (rule and bulk log), reachable with `g p`, `g s`, `g l`, `g c`, the `⋯` menu or Cmd+K. Saved searches are there too, and on `5`–`9`.
 
 ---
 
@@ -251,12 +259,12 @@ Priority: **P0** = demo must-have · **P1** = should-have · **P2** = later.
 | ID | Requirement | Pri |
 |---|---|---|
 | PA-01 | Opens from the local cache in <100 ms with list focus, then refreshes in place (a spinner in the header, never a blank list). | P0 |
-| PA-02 | Header: split tabs with live counts; the current split is highlighted. | P0 |
+| PA-02 | Header: the four splits as a segmented control with live counts; the current split is raised. A view outside the splits shows as a title with a way back; the `⋯` menu reaches those views and saved searches. | P0 |
 | PA-03 | Within a split, rows are grouped by repo (toggle `s`) with stable group order: repos don't reshuffle while you work. Feed collapses bundles (per repo, per bot) that expand inline. | P0 |
 | PA-04 | Empty states per split: Needs me shows "Nothing needs you", and the others say what got cleared ("12 cleared by rules today, view"). | P0 |
 | PA-05 | Status strip shows one message at a time, by priority: error > rate-limit cooldown > warning > update. | P0 |
 | PA-06 | Toasts confirm every action with an undo hint ("Done acme/web#4521 · z to undo", "Cleared 37 items · z to undo"). They stack up to 3 and auto-dismiss. | P0 |
-| PA-07 | Footer: context-sensitive key hints and a Cmd+K button. | P0 |
+| PA-07 | Footer: context-sensitive key hints as key caps that run on a click, and a Cmd+K hint. | P0 |
 | PA-08 | Detach the panel into a resizable window. | P2 |
 
 ### 9.3 Row
@@ -296,7 +304,7 @@ Priority: **P0** = demo must-have · **P1** = should-have · **P2** = later.
 | SE-01 | `/` live text filter over title and repo within the current split. Return/Tab keeps the filter; Esc clears it. | P0 |
 | SE-02 | `a` toggles "unread only". | P0 |
 | SE-03 | Structured qualifiers with negation: `repo:`, `-repo:`, `org:`, `reason:`, `is:pr`, `is:issue`, `is:draft`, `author:`, `ci:failing`, `state:open`. | P1 |
-| SE-04 | Saved searches as custom splits. | P2 |
+| SE-04 | Saved searches as custom splits: in the `⋯` menu, on keys `5`–`9` and in the Tab cycle. | P2 |
 
 ### 9.6 Alerts
 

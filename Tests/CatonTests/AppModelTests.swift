@@ -211,6 +211,16 @@ struct AppModelTests {
         #expect(model.panel.tabs.count == 4)
     }
 
+    @Test func a_view_outside_the_splits_goes_back_to_the_split_shown_before() {
+        loadThree()
+        model.panel.show(.split(.feed))
+        model.panel.show(.snoozed)
+        #expect(model.panel.lastSplit == .feed)
+        model.panel.show(.cleared)
+        model.panel.showLastSplit()
+        #expect(model.panel.section == .split(.feed))
+    }
+
     @Test func practice_sets_the_inbox_aside_and_gives_it_back() {
         loadThree()
         model.enterPractice()

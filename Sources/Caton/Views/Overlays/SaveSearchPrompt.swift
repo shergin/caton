@@ -9,7 +9,7 @@ struct SaveSearchPrompt: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Save search as a split").font(.system(size: 12, weight: .semibold))
+            CardTitle("Save search as a split")
             Text(model.panel.searchQuery).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(2)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
@@ -22,10 +22,7 @@ struct SaveSearchPrompt: View {
             }
             .controlSize(.small)
         }
-        .padding(12)
-        .frame(width: 300)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .shadow(radius: 8)
+        .card(width: 300)
         .onAppear { focused = true }
     }
 }

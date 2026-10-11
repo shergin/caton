@@ -53,9 +53,9 @@ struct ThreadRow: View {
                         Text("no notification").foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 Text(item.thread.title)
-                    .font(.system(size: 13, weight: item.isUnread ? .semibold : .regular))
+                    .font(item.isUnread ? Theme.Font.titleEmphasized : Theme.Font.title)
                     .foregroundStyle(item.isUnread ? .primary : .secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -73,22 +73,14 @@ struct ThreadRow: View {
             } else {
                 VStack(alignment: .trailing, spacing: 3) {
                     BadgeLabel(classification: item.classification)
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         signals
                         Age(date: item.thread.updatedAt, emphasized: showsWaiting)
                     }
                 }
             }
         }
-        .padding(.trailing, 7)
-        .frame(height: 46)
-        // A menu item's highlight: inset, rounded.
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.3) : isHovered ? Color.primary.opacity(0.06) : .clear)
-        )
-        .padding(.horizontal, 5)
-        .contentShape(Rectangle())
+        .rowChrome(isSelected: isSelected, isHovered: isHovered)
         .onTapGesture(perform: onOpen)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
@@ -133,7 +125,7 @@ struct ThreadRow: View {
         } else if let issue = lenses.issueSignals {
             IssueSignals(issue: issue, actorKind: item.classification.actorKind)
         } else if let fallback {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 if fallback.state == .open, let checks = fallback.checks {
                     ChecksGlyph(state: checks == .success ? .SUCCESS : checks == .failure ? .FAILURE : .PENDING)
                 }
@@ -145,62 +137,18 @@ struct ThreadRow: View {
     }
 }
 
+/// The ownership label: why the thread is where it is, in a word or two.
+/// Plain text; it stands out only when it is addressed to the viewer.
 struct BadgeLabel: View {
     let classification: Classification
 
     var body: some View {
         let badge = classification.badge
         Text(classification.routedBy == .drafts ? "Draft" : badge.title)
-            .font(.system(size: 10, weight: badge.isDirect ? .semibold : .regular))
-            .foregroundStyle(badge.isDirect ? Color.green : Color.secondary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(badge.isDirect ? Color.green.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 4))
+            .font(badge.isDirect ? Theme.Font.detailEmphasized : Theme.Font.detail)
+            .foregroundStyle(badge.isDirect ? .primary : .secondary)
             .lineLimit(1)
             .fixedSize()
-    }
-}
-
-struct Age: View {
-    let date: Date
-    let emphasized: Bool
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let seconds = context.date.timeIntervalSince(date)
-            Text(emphasized && seconds > 4 * 3600 ? "waiting \(Self.short(seconds))" : Self.short(seconds))
-                .font(.system(size: 11))
-                .foregroundStyle(emphasized && seconds > 24 * 3600 ? .orange : .secondary)
-                .fixedSize()
-        }
-    }
-
-    static func short(_ seconds: TimeInterval) -> String {
-        switch seconds {
-        case ..<60: "now"
-        case ..<3600: "\(Int(seconds / 60))m"
-        case ..<86400: "\(Int(seconds / 3600))h"
-        default: "\(Int(seconds / 86400))d"
-        }
-    }
-}
-
-struct RowButton: View {
-    let symbol: String
-    let help: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 26, height: 26)
-                .background(isHovered ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help(help)
     }
 }
 

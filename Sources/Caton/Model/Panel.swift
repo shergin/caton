@@ -51,7 +51,14 @@ final class Panel {
 
     // MARK: Where the user is
 
-    var section: Section = .split(.needsMe) { didSet { if section != oldValue { relayout() } } }
+    var section: Section = .split(.needsMe) {
+        didSet {
+            if case .split(let split) = section { lastSplit = split }
+            if section != oldValue { relayout() }
+        }
+    }
+    /// The split shown last, which a view outside the splits goes back to.
+    private(set) var lastSplit: Split = .needsMe
     var selectedID: RowID?
     var checked: Set<ItemID> = []
     var searchQuery = "" { didSet { if searchQuery != oldValue { relayout() } } }
@@ -257,6 +264,9 @@ final class Panel {
             selectedID = nil
         }
     }
+
+    /// Back from a view outside the splits to the split shown before it.
+    func showLastSplit() { show(.split(lastSplit)) }
 
     /// The saved search at an index, as digits 5 to 9 reach them.
     func showSaved(at index: Int) {

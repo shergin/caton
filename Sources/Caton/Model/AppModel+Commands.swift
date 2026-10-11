@@ -140,23 +140,33 @@ extension AppModel {
         var id: String { key }
     }
 
+    /// The splits a bulk clear reaches: the current one, or, from Needs me,
+    /// every other split. Needs me is never cleared in bulk.
+    private var zeroSplits: [Split] {
+        if case .split(let split) = panel.section, split != .needsMe { return [split] }
+        return [.team, .following, .feed]
+    }
+
+    /// Where the bulk clears apply, for the picker's title: "Team, Following and Feed".
+    var zeroScope: String {
+        let splits = zeroSplits
+        return splits.count == 1 ? splits[0].title : "Team, Following and Feed"
+    }
+
     /// The bulk clears on offer, each with its count: everything in Feed, or
-    /// everything older than a day, three days or a week in the current split
-    /// (outside Needs me, in every split but Needs me). Needs me is never
-    /// cleared in bulk.
+    /// what is read, or older than a day, three days or a week, in the
+    /// splits `zeroScope` names.
     var zeroOptions: [ZeroOption] {
         let snapshot = inbox?.snapshot ?? InboxSnapshot()
-        let splits: [Split] = if case .split(let split) = panel.section, split != .needsMe { [split] } else { [.team, .following, .feed] }
-        let scope = splits.count == 1 ? splits[0].title : "Team, Following and Feed"
-        let pool = splits.flatMap { snapshot.items(in: $0) }
+        let pool = zeroSplits.flatMap { snapshot.items(in: $0) }
         let day: TimeInterval = 24 * 3600
         func older(_ days: Double) -> [InboxItem] { pool.filter { $0.thread.updatedAt < .now.addingTimeInterval(-days * day) } }
         return [
             ZeroOption(key: "1", title: "Everything in Feed", items: snapshot.items(in: .feed)),
-            ZeroOption(key: "2", title: "Read in \(scope)", items: pool.filter { !$0.isUnread }),
-            ZeroOption(key: "3", title: "Older than a day in \(scope)", items: older(1)),
-            ZeroOption(key: "4", title: "Older than 3 days in \(scope)", items: older(3)),
-            ZeroOption(key: "5", title: "Older than a week in \(scope)", items: older(7)),
+            ZeroOption(key: "2", title: "Read", items: pool.filter { !$0.isUnread }),
+            ZeroOption(key: "3", title: "Older than a day", items: older(1)),
+            ZeroOption(key: "4", title: "Older than 3 days", items: older(3)),
+            ZeroOption(key: "5", title: "Older than a week", items: older(7)),
         ]
     }
 

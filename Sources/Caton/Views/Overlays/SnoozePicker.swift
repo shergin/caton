@@ -16,59 +16,38 @@ struct SnoozePicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 12, weight: .semibold))
+        VStack(alignment: .leading, spacing: 2) {
+            CardTitle(title).padding(.bottom, 6)
             ForEach(SnoozeOption.all) { option in
-                Button {
-                    model.chooseSnooze(option.date())
-                } label: {
-                    HStack {
-                        Text(option.key).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                        Text(option.title).font(.system(size: 12))
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.plain)
+                MenuRow(key: option.key, title: option.title) { model.chooseSnooze(option.date()) }
             }
-            Divider()
+            Divider().padding(.vertical, 6)
             if let pullRequest {
                 if model.followUp(for: pullRequest) != nil {
-                    Button {
+                    MenuRow(key: "x", title: "Remove the reminder") {
                         model.panel.overlay = .none
                         model.clearReminder(pullRequest)
-                    } label: {
-                        HStack {
-                            Text("x").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                            Text("Remove the reminder").font(.system(size: 12))
-                            Spacer()
-                        }
                     }
-                    .buttonStyle(.plain)
                 }
-                Text("If nobody has reviewed or commented by then, it shows in Needs me.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                CardNote("If nobody has reviewed or commented by then, it shows in Needs me.")
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
             } else {
-                Toggle(isOn: Bindable(model.panel).snoozeOnlyIfQuiet) {
-                    HStack {
-                        Text("n").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                        Text("Only if nothing happens").font(.system(size: 12))
-                    }
+                MenuRow(key: "n", title: "Only if nothing happens") {
+                    model.panel.snoozeOnlyIfQuiet.toggle()
+                } trailing: {
+                    Image(systemName: model.panel.snoozeOnlyIfQuiet ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(model.panel.snoozeOnlyIfQuiet ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                 }
-                .toggleStyle(.checkbox)
-                Text(model.panel.snoozeOnlyIfQuiet
+                CardNote(model.panel.snoozeOnlyIfQuiet
                     ? "Comes back on any new activity; at the time, only if there was none."
                     : "Comes back early if something new needs you.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
             }
         }
-        .padding(12)
-        .frame(width: 240)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .shadow(radius: 8)
+        .card(width: 260, padding: 10)
     }
 }
 

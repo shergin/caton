@@ -6,33 +6,21 @@ struct ZeroPicker: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Get me to zero").font(.system(size: 12, weight: .semibold))
+        VStack(alignment: .leading, spacing: 2) {
+            CardTitle("Get me to zero")
+            Text("In \(model.zeroScope)").font(Theme.Font.detail).foregroundStyle(.secondary).padding(.bottom, 6)
             ForEach(model.zeroOptions) { option in
-                Button {
+                MenuRow(key: option.key, title: option.title, isEnabled: !option.items.isEmpty) {
                     model.getMeToZero(option)
-                } label: {
-                    HStack {
-                        Text(option.key).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                        Text(option.title).font(.system(size: 12))
-                        Spacer()
-                        Text("\(option.items.count)").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).monospacedDigit()
-                    }
-                    .contentShape(Rectangle())
+                } trailing: {
+                    Text("\(option.items.count)").font(Theme.Font.count).foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .disabled(option.items.isEmpty)
-                .opacity(option.items.isEmpty ? 0.45 : 1)
             }
-            Text("Marks them done, after the undo window. Needs me is never cleared in bulk.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            CardNote("Marks them done, after the undo window. Needs me is never cleared in bulk.")
+                .padding(.horizontal, 6)
+                .padding(.top, 8)
         }
-        .padding(12)
-        .frame(width: 300)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .shadow(radius: 8)
+        .card(width: 300, padding: 10)
     }
 }
 

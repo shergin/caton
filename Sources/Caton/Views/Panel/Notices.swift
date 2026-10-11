@@ -1,6 +1,37 @@
 import CatonCore
 import SwiftUI
 
+/// A band across the top while the inbox is not the account's as GitHub
+/// sees it: the practice inbox, or a dry run.
+struct ModeStrip: View {
+    let model: AppModel
+
+    var body: some View {
+        if model.isPractice {
+            strip("Practice inbox · nothing here reaches GitHub", color: .accentColor) {
+                Button("Leave") { model.exitPractice() }
+                    .buttonStyle(.plain)
+                    .font(Theme.Font.detailEmphasized)
+                    .help("Back to your inbox")
+            }
+        } else if model.dryRun {
+            strip("Dry run · changes stay on this Mac", color: .orange) { EmptyView() }
+        }
+    }
+
+    private func strip<Trailing: View>(_ message: String, color: Color, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 8) {
+            Text(message).font(Theme.Font.detail).lineLimit(1)
+            Spacer()
+            trailing()
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, Theme.Spacing.margin)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.1))
+    }
+}
+
 struct ToastStack: View {
     let toasts: [Panel.Toast]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -9,14 +40,14 @@ struct ToastStack: View {
         VStack(spacing: 4) {
             ForEach(toasts) { toast in
                 Text(toast.message)
-                    .font(.system(size: 11))
+                    .font(Theme.Font.detail)
                     .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.primary.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color.primary.opacity(0.85), in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -33,7 +64,7 @@ struct StatusStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: symbol).font(.system(size: 10))
-            text.font(.system(size: 11)).lineLimit(2)
+            text.font(Theme.Font.detail).lineLimit(2)
             Spacer()
             switch message {
             case .error:
@@ -46,17 +77,17 @@ struct StatusStrip: View {
                     model.panel.toast("Copied \(Updates.upgradeCommand)")
                 }
                 .buttonStyle(.link)
-                .font(.system(size: 11))
+                .font(Theme.Font.detail)
                 .help("\(Updates.upgradeCommand) installs \(release.version)")
                 Button("What's new") { model.openURL(release.url) }
                     .buttonStyle(.link)
-                    .font(.system(size: 11))
+                    .font(Theme.Font.detail)
             case .cooldown, .warning:
                 EmptyView()
             }
         }
         .foregroundStyle(color)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Spacing.margin)
         .padding(.vertical, 6)
         .background(color.opacity(0.08))
     }

@@ -35,7 +35,8 @@ aside).
   `Accounts` (sign-in, building sessions), `Panel` (where the user is, and
   the laid-out list) and `AppModel` (the root and the commands); `Keys/`
   has the command table every key, menu and hint reads; `Graph/` holds
-  Baton documents and the subject store; `Views/` is split into `Panel/`,
+  Baton documents and the subject store; `Views/` is split into `Style/`
+  (the design tokens and the chrome every row and card wears), `Panel/`,
   `Rows/`, `Overlays/` and `Settings/`; `App/` is the AppKit shell.
 - A new command is a line in `Command.all` with the row kinds it applies
   to; a new overlay handles its own keys in a `handle(_:model:)` beside

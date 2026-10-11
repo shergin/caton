@@ -74,8 +74,8 @@ CATON_DRY_RUN=1 ./scripts/run.sh
 `CATON_DRY_RUN=1` keeps every change local: nothing is marked read, done or
 unsubscribed on GitHub. `CATON_GITHUB_TOKEN=$(gh auth token)` signs in without
 the sign-in screen. Debug builds also take `CATON_OPEN_PANEL=1`,
-`CATON_SECTION=0…3`, `CATON_PRACTICE=1` (opens the practice inbox),
-`CATON_OVERLAY=peek|help|commands|snooze|why|tips|zero|none`,
+`CATON_SECTION=0…3|prs|snoozed|later|cleared`, `CATON_PRACTICE=1` (opens
+the practice inbox), `CATON_OVERLAY=peek|help|commands|snooze|why|tips|zero|search|none`,
 `CATON_SNAPSHOT=/path.png` (renders the panel to a file) and `CATON_DUMP=1`
 (prints the classified inbox to stderr).
 
@@ -130,7 +130,7 @@ Settings › Shortcuts). The global shortcut is `⌘'` by default (`⌥⌘'` whe
 another app holds it); a second one, off by default, opens straight into
 Needs me.
 
-My PRs (`g p`, or the `…` menu) lists your open pull requests by whose move
+My PRs (`g p`, or the `⋯` menu) lists your open pull requests by whose move
 it is, with "waiting on @alex · 3d" and the like; `h` there sets a reminder
 that joins Needs me if nobody has reviewed or commented by then. `n` nudges:
 it asks the reviewers again (also from a Follow up row, which it then
@@ -143,14 +143,14 @@ reply yet"). `⌘K` › "Why is this here?" explains a thread's split, and "Get
 me to zero…" previews each bulk clear with its count.
 
 Feed bundles what one bot sent and what a busy repository sent into single
-rows; `e` on a bundle clears all of it. The header's window button (or `⌘K`)
-moves the inbox into an ordinary window that stays open.
+rows; `e` on a bundle clears all of it. The gear menu (or `⌘K`) moves the
+inbox into an ordinary window that stays open.
 
 Search takes words and GitHub-style qualifiers, each negatable with `-`:
 `repo:`, `org:`, `author:`, `reason:` (`review`, `mention`, `team`, …), `is:`
 (`pr`, `issue`, `draft`, `unread`, `open`, `closed`, `merged`, `bot`) and
 `ci:` (`failing`, `passing`, `pending`). "Save as split" keeps a search as a
-tab after Feed.
+split of its own, in the `⋯` menu and on keys `5`–`9`.
 
 ## Alerts
 

@@ -1,48 +1,43 @@
 import CatonCore
 import SwiftUI
 
-/// The verbs that apply to the selection, from the command table, and the
-/// settings menu.
+/// The verbs that apply to the selection, from the command table, each a
+/// key cap that runs on a click; ⌘K for the rest; and the settings menu.
 struct PanelFooter: View {
     let model: AppModel
+    let close: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             if model.panel.checked.isEmpty {
-                hints(limit: 4)
-                Hint(key: "?", label: "keys")
+                hints(limit: 3)
             } else {
-                Text("\(model.panel.checked.count) selected").font(.system(size: 11)).foregroundStyle(Color.accentColor)
+                Text("\(model.panel.checked.count) selected")
+                    .font(Theme.Font.detailEmphasized)
+                    .foregroundStyle(Color.accentColor)
                 hints(limit: 2)
-                Hint(key: "esc", label: "clear")
+                hint("esc", "clear") { _ = model.panel.unwind() }
             }
+            hint("⌘K", "commands") { model.panel.overlay = .commands }
             Spacer()
             SettingsMenu(model: model)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Spacing.margin)
         .padding(.vertical, 7)
     }
 
     private func hints(limit: Int) -> some View {
-        ForEach(Command.hints(in: model, limit: limit), id: \.label) { hint in
-            Hint(key: hint.key, label: hint.label)
+        ForEach(Command.hints(in: model, limit: limit), id: \.id) { command in
+            hint(command.bindings.first?.label ?? "", command.hint ?? command.title) {
+                if command.run(model) { close() }
+            }
         }
     }
-}
 
-struct Hint: View {
-    let key: String
-    let label: String
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(key)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
-            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
-        }
+    private func hint(_ key: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { KeyHint(key: key, label: label) }
+            .buttonStyle(.plain)
+            .help(label.capitalized)
     }
 }
 
@@ -74,6 +69,9 @@ struct SettingsMenu: View {
             Section("View") {
                 Toggle("Group by repository", isOn: Bindable(model.panel).groupByRepository)
                 Toggle("Unread only", isOn: Bindable(model.panel).unreadOnly)
+                Button(model.preferences.detached ? "Back to the menu bar" : "Open in a window") {
+                    model.preferences.detached ? model.attach?() : model.detach?()
+                }
             }
             Section("Accounts") {
                 ForEach(model.accounts.all, id: \.key) { account in
@@ -92,10 +90,15 @@ struct SettingsMenu: View {
             Button("Refresh") { model.inbox?.refresh() }
             Button("Quit Caton") { NSApp.terminate(nil) }
         } label: {
-            Image(systemName: "gearshape").font(.system(size: 11)).foregroundStyle(.secondary)
+            Image(systemName: "gearshape")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 20)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .help("Rules, view, accounts and settings")
     }
 }

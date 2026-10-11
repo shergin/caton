@@ -6,7 +6,7 @@ import SwiftUI
 struct KeymapOverlay: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Keys").font(.system(size: 13, weight: .semibold))
+            CardTitle("Keys")
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 16) {
                     column([.act, .view, .app])
@@ -17,21 +17,19 @@ struct KeymapOverlay: View {
                 }
                 .frame(maxHeight: 400)
             }
-            Text("Any key closes. ⌘K lists the rest.").font(.system(size: 10)).foregroundStyle(.tertiary)
+            CardNote("Any key closes. ⌘K lists the rest.")
         }
-        .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .shadow(radius: 10)
+        .card()
     }
 
     private func column(_ groups: [Command.Group]) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(groups, id: \.self) { group in
-                Text(group.title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                Text(group.title).font(Theme.Font.sectionHeader).foregroundStyle(.secondary).padding(.top, 6)
                 ForEach(Command.keymap(group, keys: 2), id: \.title) { line in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(line.keys).font(.system(size: 10, design: .monospaced)).frame(width: 64, alignment: .leading)
-                        Text(line.title).font(.system(size: 10)).lineLimit(1).frame(width: 170, alignment: .leading)
+                        Text(line.keys).font(Theme.Font.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+                        Text(line.title).font(Theme.Font.caption).lineLimit(1).frame(width: 170, alignment: .leading)
                     }
                 }
             }

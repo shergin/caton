@@ -11,7 +11,7 @@ the way it does.
 
 ```
 App/          AppKit shell: status item, panel, window, hot key, banners
-Views/        SwiftUI: Panel/, Rows/, Overlays/, Settings/
+Views/        SwiftUI: Style/ (tokens, chrome), Panel/, Rows/, Overlays/, Settings/
 Keys/         KeyPress -> KeyRouter -> the Command table
 Model/        AppModel (root) · Accounts · Session · Panel
 Graph/        Baton: SubjectStore and the model's .graphql documents
@@ -110,7 +110,8 @@ how tests sign in.
 
 ### Panel: where the user is
 
-`Panel` is UI state: the section, the selection and checks, the search and
+`Panel` is UI state: the section (and the split shown last, which a view
+outside the splits goes back to), the selection and checks, the search and
 filters, the overlay, and the toasts. The list it shows (`items`, `rows`,
 `savedCounts`) is **stored, not computed on read**. `relayout()` rebuilds it
 when an input changes. Each input property calls it in its `didSet`, and
@@ -128,6 +129,26 @@ session events to the panel and to alerts. Its commands live in
 finds its rows in the panel, asks the session to change them, and says
 what happened in a toast. A command handles only its own
 kind of row; which command a key runs is the command table's call.
+
+## Views: one look
+
+- `Style/Theme.swift` is the design in one place: fonts, radii, spacing
+  and fills, named by role (`Theme.Font.title`, `Theme.Fill.selection`).
+  A view says what a thing is; the theme says how it looks.
+- The chrome is shared. `rowChrome(isSelected:isHovered:)` is the height
+  and the highlight every row of the list wears; `card(width:)` is the
+  material, corner, edge and shadow of every overlay; `KeyCap` and
+  `KeyHint` draw a key the way the footer, the tips and the welcome do;
+  `MenuRow` is a choice in a picker card.
+- The panel is dressed as a menu: no title row, since a menu never names
+  its app. `SectionBar` holds the four splits as a segmented control with
+  live counts; a view outside the splits (a saved search, My PRs, Snoozed,
+  Later, Cleared) shows as a title with a round button back to the split
+  shown before, the way Control Center drills into a module, and the More
+  menu (`ellipsis.circle`) reaches those views and the saved searches.
+  `ModeStrip` is a tinted band across the top while the inbox is the
+  practice one or a dry run. The footer's hints are key caps that run
+  their command on a click, from `Command.hints`.
 
 ## Keys: one table
 
@@ -150,8 +171,8 @@ NSEvent -> KeyPress -> KeyRouter -> overlay handler | g prefix | Command.match -
   row.
 - The same table feeds the router, the command menu (`Command.menu`, the
   commands that apply now), the keymap overlay and Settings
-  (`Command.keymap`), and the footer (`Command.hints`). A new command is
-  one line in the table.
+  (`Command.keymap`), and the footer (`Command.hints`, the commands whose
+  key caps it shows and runs). A new command is one line in the table.
 
 ## Where Baton sits
 

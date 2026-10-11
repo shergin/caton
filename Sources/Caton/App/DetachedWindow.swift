@@ -58,9 +58,6 @@ final class DetachedWindow: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "Caton"
-        // The inbox's own header names it; the title bar only holds the buttons.
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.minSize = NotificationPanel.minimumSize
         window.contentView = NSHostingView(rootView: PanelView(model: model, close: {}))

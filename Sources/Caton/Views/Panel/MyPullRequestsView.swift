@@ -37,8 +37,8 @@ struct MyPullRequestsView: View {
         case .failed(let error):
             VStack(spacing: 8) {
                 Image(systemName: "wifi.exclamationmark").font(.system(size: 22)).foregroundStyle(.tertiary)
-                Text("Couldn't load your pull requests").font(.system(size: 13)).foregroundStyle(.secondary)
-                Text(String(describing: error)).font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(3)
+                Text("Couldn't load your pull requests").font(Theme.Font.title).foregroundStyle(.secondary)
+                Text(String(describing: error)).font(Theme.Font.caption).foregroundStyle(.tertiary).lineLimit(3)
                 Button("Try Again") { pullRequests.retry() }.controlSize(.small)
             }
             .padding(24)
@@ -59,7 +59,7 @@ struct RefreshNotice: View {
                 Spacer()
                 Button("Retry", action: retry).controlSize(.small)
             }
-            .font(.system(size: 10))
+            .font(Theme.Font.caption)
             .foregroundStyle(.secondary)
             .padding(8)
             .help(failure.localizedDescription)
@@ -111,9 +111,9 @@ struct MyPullRequestList: View {
     var body: some View {
         let groups = MyPullRequests.groups(user, now: .now)
         if groups.isEmpty, !user.pullRequests.hasNext {
-            VStack(spacing: 6) {
-                LogoImage(size: 40)
-                Text("No open pull requests").font(.system(size: 13)).foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                LogoImage(size: 56)
+                Text("No open pull requests").font(Theme.Font.title).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -121,13 +121,7 @@ struct MyPullRequestList: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(groups, id: \.group) { group in
-                            Text("\(group.group.title) · \(group.nodes.count)")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .padding(.top, 6)
-                                .padding(.bottom, 2)
+                            SectionHeader("\(group.group.title) · \(group.nodes.count)")
                             ForEach(group.nodes, id: \.id) { node in row(node) }
                         }
                         if user.pullRequests.hasNext {
